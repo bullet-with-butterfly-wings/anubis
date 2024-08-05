@@ -505,6 +505,23 @@ class Timing_Analyser():
         else:
             return True, None
         
+    def plot_rpc_histogram(self):
+        plt.figure(figsize=(10, 6))
+        index = range(6)
+        rpc_count = [0] * 6
+        for count in range(6):
+            rpc_count = list(map(sum, zip(rpc_count,self.rpc_involvement[count])))
+        plt.bar(list(range(6)), rpc_count)
+
+        plt.xlabel('RPC Number')
+        plt.ylabel('Proportion of Events')
+        plt.title('RPC Involvement')
+        #plt.xticks([x + bar_width * 3 for x in index], index) 
+        plt.legend()
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+        plt.show()
+
     def plot_rpc_involvement_histogram(self):
         plt.figure(figsize=(10, 6))
         bar_width = 0.1 

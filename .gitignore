@@ -1,6 +1,7 @@
 # Python specific files
 Osiris/processing/python/__pycache__/
 *.py[cod]
+output/
 *.so
 .Python
 env/
