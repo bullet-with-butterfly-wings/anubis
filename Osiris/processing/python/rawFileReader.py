@@ -66,7 +66,7 @@ class fileReader():
         self.update_adjustment_window(realigned)
         self.tdc_monitoring_event_buffer.extend(evts_chunk)
         if self.tdc_monitoring_counter >= 2500:
-            TDC_error_time, tdc_mets = self.monitor_tdc3_state(recordtimes=True)
+            TDC_error_time, tdc_mets = self.monitor_tdc_state(recordtimes=True)
             self.tdc_monitoring_event_buffer.clear()
             self.tdc_monitoring_counter = 0
         if extract_tdc_mets:
@@ -121,7 +121,7 @@ class fileReader():
         else:
             self.adjustment = 0
             
-    def monitor_tdc3_state(self, recordtimes=False):
+    def monitor_tdc_state(self, recordtimes=False):
         TDC_error_time = [[] for tdc in range(5)]
         tdc_mets = [[] for tdc in range(5)]
         for tdc in range(5):
@@ -130,6 +130,7 @@ class fileReader():
             for i, event in enumerate(self.tdc_monitoring_event_buffer[-(2500):]):
                 words = event.tdcEvents[tdc].words
                 times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in []]
+                
                 if times_words:
                     min_time, min_word = min(times_words, key=lambda x: x[0])
                     if recordtimes:
