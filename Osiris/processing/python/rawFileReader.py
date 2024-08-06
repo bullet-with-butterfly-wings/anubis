@@ -4,6 +4,7 @@ import struct
 import datetime
 import os
 import importlib
+from tqdm import tqdm
 import Analysis_tools as aTools
 
 def readTimeStamp(tsData):
@@ -46,8 +47,18 @@ class fileReader():
         for event in range(len(self.evtBuilder.events)):
             evts.append(self.evtBuilder.events.pop(0))
         return evts
-    def skip_to(self):
-        print(len(self.evtBuilder.events))
+    def skip_events(self, count):
+        init = count
+        with tqdm(total=count, desc="Skipping Events", unit='Events') as pbar:
+            while count > 0:
+                if not self.readBlock():
+                    print("Bad Block Read")
+                    break
+                if(self.hasEvents()):
+                    count -= len(self.evtBuilder.events)
+                    pbar.update(len(self.evtBuilder.events))
+                    self.evtBuilder.events.clear()
+        return init-count
 
     def get_aligned_events(self, order = [(0,1), (1,2), (2,3), (3,4)], interval = 100, extract_tdc_mets = False):
         evts_chunk = []
@@ -59,7 +70,6 @@ class fileReader():
                 print("Bad Block Read")
                 break
             if(self.hasEvents()):
-                print(len(self.evtBuilder.events))
                 for event in range(len(self.evtBuilder.events)):
                     evts_chunk.append(self.evtBuilder.events.pop(0))
                     i += 1
@@ -67,7 +77,7 @@ class fileReader():
         aligned, realigned = self.doRealign(evts_chunk, order)
         self.check_alignment_status(aligned, realigned) 
         self.update_adjustment_window(realigned)
-        #self.global_alignment = True
+        self.global_alignment = True
         self.tdc_monitoring_event_buffer.extend(evts_chunk)
         if self.tdc_monitoring_counter >= 2500:
             TDC_error_time, tdc_mets = self.monitor_tdc_state(recordtimes=True)
