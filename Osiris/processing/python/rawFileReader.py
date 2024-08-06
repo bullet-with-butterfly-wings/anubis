@@ -46,7 +46,9 @@ class fileReader():
         for event in range(len(self.evtBuilder.events)):
             evts.append(self.evtBuilder.events.pop(0))
         return evts
-    
+    def skip_to(self):
+        print(len(self.evtBuilder.events))
+
     def get_aligned_events(self, order = [(0,1), (1,2), (2,3), (3,4)], interval = 100, extract_tdc_mets = False):
         evts_chunk = []
         tdc_mets = [0 for tdc in range(5)]
@@ -57,6 +59,7 @@ class fileReader():
                 print("Bad Block Read")
                 break
             if(self.hasEvents()):
+                print(len(self.evtBuilder.events))
                 for event in range(len(self.evtBuilder.events)):
                     evts_chunk.append(self.evtBuilder.events.pop(0))
                     i += 1
@@ -64,6 +67,7 @@ class fileReader():
         aligned, realigned = self.doRealign(evts_chunk, order)
         self.check_alignment_status(aligned, realigned) 
         self.update_adjustment_window(realigned)
+        #self.global_alignment = True
         self.tdc_monitoring_event_buffer.extend(evts_chunk)
         if self.tdc_monitoring_counter >= 2500:
             TDC_error_time, tdc_mets = self.monitor_tdc_state(recordtimes=True)
@@ -124,12 +128,13 @@ class fileReader():
     def monitor_tdc_state(self, recordtimes=False):
         TDC_error_time = [[] for tdc in range(5)]
         tdc_mets = [[] for tdc in range(5)]
+        bad_channels = [[32],[0,96],[64],[31,32],[0,1,2,3]]
         for tdc in range(5):
             poor_time_count = 0
             good_time_count = 0
             for i, event in enumerate(self.tdc_monitoring_event_buffer[-(2500):]):
                 words = event.tdcEvents[tdc].words
-                times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in []]
+                times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in bad_channels[tdc]]
                 
                 if times_words:
                     min_time, min_word = min(times_words, key=lambda x: x[0])
@@ -158,7 +163,7 @@ class fileReader():
                     self.tdcstatus[tdc] = True
                     if not self.lasttdcStatus[tdc]:
                         print(f'tdc{tdc} enters nominal state through metric')
-                        self.lasttdc3Status[tdc] = True
+                        self.lasttdcStatus[tdc] = True
                         buffer = self.reload_event_builder()
                         print(f'event builder reloaded, proof {buffer}')
         return TDC_error_time, tdc_mets

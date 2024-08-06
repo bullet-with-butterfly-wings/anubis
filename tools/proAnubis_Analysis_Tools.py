@@ -533,7 +533,7 @@ class Timing_Analyser():
             if total == 0:
                 normalized = [0] * len(self.rpc_involvement[count])
             else:
-                normalized = [rpc_count / total for rpc_count in self.rpc_involvement[count]]
+                normalized = [rpc_count for rpc_count in self.rpc_involvement[count]]
 
             plt.bar([x + i * bar_width for x in index], normalized, bar_width, label=f'Count {count}')
 
