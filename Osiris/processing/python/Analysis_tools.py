@@ -154,7 +154,7 @@ def calcAvgAlign(event_chunk, offSet=0, i = 1, j = 2, k = 0, l = 2, tdc1 =0, tdc
                 etOff = testAlign(etaHits[i],etaHits[j], skipChans = skipChans)
                 phOff = testAlign(phiHits[k],phiHits[l], skipChans = skipChans)
                 if etOff>=0 and phOff>=0:
-                    mets.append(math.sqrt(etOff*etOff+phOff*phOff))
+                    mets.append(math.sqrt(etOff*etOff+phOff*phOff)) # strips do not have different dimensions??
             else:
                 phOff = testAlign(phiHits[k],phiHits[l], skipChans = skipChans)
                 if phOff>=0:
