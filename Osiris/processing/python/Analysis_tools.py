@@ -8,7 +8,7 @@ class rpcHit():
         self.channel = channel
         self.eta = eta
         self.event_num = event_num
-def __str__(self):
+    def __str__(self):
         return f"rpcHit(channel={self.channel}, time={self.time}, eta={self.eta}, event_num={self.event_num}, rpc={self.rpc})"
 
 
@@ -73,7 +73,8 @@ def tdcChanToRPCHit(word, tdc, event_num):
             rpcChan = tdcChannel
             eta = False
             rpc = 5
-        return rpc, rpcHit(rpcChan, tdcHitTime * 0.8, eta, event_num, rpc)
+        #was there * 0.8 time idk
+        return rpc, rpcHit(rpcChan, tdcHitTime, eta, event_num, rpc)
 
 def find_tdc_alignment_metric(tdc0, tdc1):
     if tdc0 > tdc1:
@@ -111,9 +112,9 @@ def testAlign(rpc1Hits, rpc2Hits, skipChans = []):
     minChans = [-1,-1]
     if len(rpc1Hits)<1 or len(rpc2Hits)<1:
         return -1
-    for hit in rpc1Hits:
+    for hit in rpc1Hits: # might not be the same time for both hits
         if hit.time<minTimes[0] and hit.channel not in skipChans:
-            minTimes[0]=hit.time
+            minTimes[0]=hit.time #choice that time hit = min time hit
             minChans[0]=hit.channel
     for hit in rpc2Hits:
         if hit.time<minTimes[1] and hit.channel not in skipChans:
