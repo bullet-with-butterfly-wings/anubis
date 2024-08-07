@@ -270,19 +270,22 @@ def plot_tdc_error_channels_custom_ranges(TDC_error_time, ranges, tdcs_to_plot=N
     with PdfPages(output_pdf) as pdf:
         for tdc in tdcs_to_plot:
             plt.figure(figsize=(24, 12))
-
+            event_count = 0
             for i, (range_start, range_end) in enumerate(ranges):
                 good_channels_dict = []
                 bad_channels_dict = []
-
+                last_process = -1
                 for (min_time, min_word), process in TDC_error_time[tdc]:
-                    if range_start <= process < range_end:
+                    if last_process > process:
+                        event_count += 2500
+                    if range_start <= process+event_count < range_end:
                         channel = (min_word >> 24) & 0x7f
-                        if min_time > 300:
-                            bad_channels_dict.append(channel)
-                        else:
+                        if 300 > min_time > 200:
                             good_channels_dict.append(channel)
-
+                        else:
+                            bad_channels_dict.append(channel)
+                    last_process = process
+                print(event_count)
                 # Plotting good channels
                 plt.subplot(2, len(ranges), i + 1)
                 if good_channels_dict:

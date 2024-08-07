@@ -150,11 +150,11 @@ class fileReader():
                     min_time, min_word = min(times_words, key=lambda x: x[0])
                     if recordtimes:
                         TDC_error_time[tdc].append([(min_time, min_word), i])
-                    if min_time > 300:
+                    if 200 < min_time <= 300:
+                        good_time_count += 1                                                
+                    else:
                         event.tdcEvents[tdc].qual = 0x10 #raising flag
                         poor_time_count += 1
-                    elif 200 < min_time <= 300:
-                        good_time_count += 1
 
             if good_time_count == 0:
                 tdc_mets[tdc].append(-1)
