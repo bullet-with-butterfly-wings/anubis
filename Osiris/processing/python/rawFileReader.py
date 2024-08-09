@@ -15,7 +15,7 @@ def readTimeStamp(tsData):
     return datetime.datetime.fromtimestamp(tStamp[0]+tStamp[1]/1000000000)
 
 class fileReader():
-    def __init__(self,filename,activeTDCs=[tdc for tdc in range(5)]):
+    def __init__(self,filename,activeTDCs=[tdc for tdc in range(6)]):
         self.fname = filename
         importlib.reload(rawEventBuilder)
         self.evtBuilder = rawEventBuilder.eventBuilder(activeTDCs=activeTDCs)
@@ -60,7 +60,7 @@ class fileReader():
                     pbar.update(len(self.evtBuilder.events))
                     self.evtBuilder.events.clear()
         return init-count
-
+        
     def get_aligned_events(self, order = [(0,1), (1,2), (2,3), (3,4)], interval = 100, extract_tdc_mets = False):
         evts_chunk = []
         tdc_mets = [0 for tdc in range(5)]
@@ -85,7 +85,8 @@ class fileReader():
         self.global_alignment = True
         self.tdc_monitoring_event_buffer.extend(evts_chunk)
         if self.tdc_monitoring_counter >= 2500:
-            TDC_error_time, tdc_mets = self.monitor_tdc_state(recordtimes=True)
+            #print(self.tdc_monitoring_counter)
+            TDC_error_time, tdc_mets = self.monitor_tdc_state(recordtimes=True, only_min=True)
             self.tdc_monitoring_event_buffer.clear()
             self.tdc_monitoring_counter = 0
         if extract_tdc_mets:
@@ -153,18 +154,22 @@ class fileReader():
                 
                 if times_words:
                     min_time, min_word = min(times_words, key=lambda x: x[0])
-                    if recordtimes:
-                        TDC_error_time[tdc].append([(min_time, min_word), i])
-                    if 200 < min_time <= 300:
-                        good_time_count += 1                                                
-                    else:
-                        event.tdcEvents[tdc].qual = 0x10 #raising flag
-                        poor_time_count += 1
+                    if only_min:
+                        times_words = [min(times_words, key=lambda x: x[0])]
+                    for hit in times_words:
+                        if recordtimes:
+                            TDC_error_time[tdc].append([hit, i])
+                        if hit[0] <= 300:
+                            good_time_count += 1                                                
+                        else:
+                            if only_min:
+                                event.tdcEvents[tdc].qual = 0x10 #raising flag
+                            poor_time_count += 1
 
             if good_time_count == 0:
                 tdc_mets[tdc].append(-1)
                 if self.lasttdcStatus[tdc]:
-                    print(f'tdc{tdc} error state through no good time')
+                    #print(f'tdc{tdc} error state through no good time')
                     self.lasttdcStatus[tdc] = False
             else:
                 ratio = poor_time_count / good_time_count
@@ -173,15 +178,15 @@ class fileReader():
                 if ratio > 0.3:
                     self.tdcstatus[tdc] = False
                     if self.lasttdcStatus[tdc]:
-                        print(f'tdc{tdc} enters error state through metric')
+                        #print(f'tdc{tdc} enters error state through metric')
                         self.lasttdcStatus[tdc] = False
                 else:
                     self.tdcstatus[tdc] = True
                     if not self.lasttdcStatus[tdc]:
-                        print(f'tdc{tdc} enters nominal state through metric')
+                        #print(f'tdc{tdc} enters nominal state through metric')
                         self.lasttdcStatus[tdc] = True
                         buffer = self.reload_event_builder()
-                        print(f'event builder reloaded, proof {buffer}')
+                        #print(f'event builder reloaded, proof {buffer}')
         return TDC_error_time, tdc_mets
         
 

@@ -197,6 +197,7 @@ def plot_tdc_error_times_custom_ranges(TDC_error_time, ranges, output_pdf='TDC_e
 
 
 
+
 def plot_tdc_error_channels(TDC_error_time, tdcs_to_plot=None):
     if tdcs_to_plot is None:
         tdcs_to_plot = range(5) 
@@ -226,7 +227,7 @@ def plot_tdc_error_channels(TDC_error_time, tdcs_to_plot=None):
     plt.legend()
     plt.grid(True)
     plt.show()
-
+    """
     plt.figure(figsize=(24, 12))
     for tdc in tdcs_to_plot:
         if bad_channels_dict[tdc]:
@@ -239,6 +240,7 @@ def plot_tdc_error_channels(TDC_error_time, tdcs_to_plot=None):
     plt.legend()
     plt.grid(True)
     plt.show()
+    """
     
     
 def plot_tdc_error_channels_custom_ranges(TDC_error_time, ranges, tdcs_to_plot=None, output_pdf='TDC_error_channels.pdf'):
@@ -279,29 +281,34 @@ def plot_tdc_error_channels_custom_ranges(TDC_error_time, ranges, tdcs_to_plot=N
             plt.figure(figsize=(24, 12))
             for i, (range_start, range_end) in enumerate(ranges):
                 event_count = 0
-                good_channels_dict = []
-                bad_channels_dict = []
+                good_channels = [0 for channel in range(128)]
+                bad_channels = [0 for channel in range(128)]
                 last_process = -1
-                for (min_time, min_word), process in TDC_error_time[tdc]:
+                for (hit_time, hit_word), process in TDC_error_time[tdc]: #TDC_error_time[tdc] should send me all the hits
                     if last_process > process:
                         event_count += 2500
                     if range_start <= process+event_count < range_end:
-                        channel = (min_word >> 24) & 0x7f
-                        if 300 > min_time > 200:
-                            good_channels_dict.append(channel)
+                        channel = (hit_word >> 24) & 0x7f
+                        if 300 > hit_time > 100:
+                            good_channels[channel] += 1
                         else:
-                            bad_channels_dict.append(channel)
+                            bad_channels[channel] += 1
                     last_process = process
+                length = (range_end - range_start)
                 #print(good_channels_dict)
                 # Plotting good channels
                 plt.subplot(2, len(ranges), i + 1)
-                if good_channels_dict:
+                x_channels = [channel for channel in range(128)]
+                good_channels = [channel/length for channel in good_channels]
+                bad_channels = [channel/length for channel in bad_channels] # normalizing per event
+                
+                if good_channels:
                     if tdc == 4:
-                        plt.hist(good_channels_dict, bins=64, alpha=0.7, edgecolor=colors[tdc],
-                                label=f'TDC {tdc} ({range_start}-{range_end}) Good', histtype='step', linewidth=2, color=colors[tdc])
+                        plt.step(x_channels, good_channels,
+                                label=f'TDC {tdc} ({range_start}-{range_end}) Good', linewidth=2, color=colors[tdc])
                     else:
-                        plt.hist(good_channels_dict, bins=128, alpha=0.7, edgecolor=colors[tdc],
-                             label=f'TDC {tdc} ({range_start}-{range_end}) Good', histtype='step', linewidth=2, color=colors[tdc])
+                        plt.step(x_channels, good_channels,
+                             label=f'TDC {tdc} ({range_start}-{range_end}) Good', linewidth=2, color=colors[tdc])
                 plt.xlabel('Channel')
                 plt.ylabel('Events')
                 plt.title(f'Good Times Channels Histogram for TDC {tdc} ({range_start}-{range_end})')
@@ -310,13 +317,13 @@ def plot_tdc_error_channels_custom_ranges(TDC_error_time, ranges, tdcs_to_plot=N
 
                 # Plotting bad channels
                 plt.subplot(2, len(ranges), len(ranges) + i + 1)
-                if bad_channels_dict:
+                if bad_channels:
                     if tdc == 4:
-                        plt.hist(bad_channels_dict, bins=64, alpha=0.7, edgecolor=colors[tdc],
-                             label=f'TDC {tdc} ({range_start}-{range_end}) Bad', histtype='step', linewidth=2, linestyle='--', color=colors[tdc])
+                        plt.step(x_channels, bad_channels,
+                             label=f'TDC {tdc} ({range_start}-{range_end}) Bad', linewidth=2, linestyle='--', color=colors[tdc])
                     else:
-                        plt.hist(bad_channels_dict, bins=64, alpha=0.7, edgecolor=colors[tdc],
-                             label=f'TDC {tdc} ({range_start}-{range_end}) Bad', histtype='step', linewidth=2, linestyle='--', color=colors[tdc])
+                        plt.step(x_channels, bad_channels,
+                             label=f'TDC {tdc} ({range_start}-{range_end}) Bad', linewidth=2, linestyle='--', color=colors[tdc])
                 plt.xlabel('Channel')
                 plt.ylabel('Events')
                 plt.title(f'Bad Times Channels Histogram for TDC {tdc} ({range_start}-{range_end})')

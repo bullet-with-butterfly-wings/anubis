@@ -701,7 +701,7 @@ def abs_badVsgood_hits(event_chunk):
         for event in event_chunk:
             for hit in event.tdcEvents[tdc].words:
                 time = (hit & 0xfffff) #*(25/32)
-                if 200 < time < 300:
+                if time < 300:
                     event_number[tdc][0] += 1
                 else:
                     event_number[tdc][1] += 1
