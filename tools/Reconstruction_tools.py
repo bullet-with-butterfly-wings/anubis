@@ -48,18 +48,20 @@ def FindCoincidentHits(etaHits, phiHits, time_window, tof_correction = True, slo
             else:
                 correction = 0
             
-            if abs(hits[i+1].time - hits[i].time - correction) <= time_window:
+            if abs(hits[i+1].time - hits[i].time - correction) <= time_window: 
                 temp_hits.append(hits[i])
                 temp_hits.append(hits[i+1])
-        
+            #I think this is wrong?? It can be both phi, 
+            # Does not represent quality Better??
 
             if temp_hits:
                 unique_hits = { (hit.channel, hit.time, hit.eta, hit.event_num, hit.rpc): hit for hit in temp_hits }.values()
                 eta_hits = [hit for hit in unique_hits if hit.eta]
                 if eta_hits:
-                    time_bin = min(hit.time for hit in eta_hits)
+                    time_bin = min(hit.time for hit in eta_hits) 
+                    #highly speculative
                 else:
-                    time_bin = 1
+                    time_bin = 1 #again
             
                 coincident_hits.append([
                     event_num,
@@ -82,7 +84,7 @@ def cluster(coincident_hits):
         phi_locations = [x for x in hit_locations if x[3] == False]
         eta_locations = [x for x in hit_locations if x[3] == True]
 
-        phi_locations = sorted(phi_locations, key=lambda x: x[1])
+        phi_locations = sorted(phi_locations, key=lambda x: x[1]) #sorted by channel
         eta_locations = sorted(eta_locations, key=lambda x: x[1])
 
         for RPC in range(6):
@@ -114,7 +116,8 @@ def cluster(coincident_hits):
                     else:
                         rpc_eta_clusters[j].append(hit)
                     previous_element = hit[1]
-            rpc_combined = [rpc_phi_clusters, rpc_eta_clusters]
+            rpc_combined = [rpc_phi_clusters, rpc_eta_clusters] 
+            # can they be in a different times mb??
 
             coincident_event_clustered[2].append(rpc_combined)
 
@@ -674,7 +677,7 @@ def filter_events(events,min_chamber_number,min_RPC_number):
 
 
 
-def count_entries(lst):
+def count_entries(lst): #why is it so complicated??
     if isinstance(lst, list):
         return sum(count_entries(sublist) for sublist in lst)
     else:
@@ -682,15 +685,27 @@ def count_entries(lst):
     
     
 def find_tdc_event_count(event_chunk):
-    event_number = [[] for tdc in range(5)]
+    event_number = []
     for tdc in range(5):
         tot_length = 0
         for event in event_chunk:
             length = len(event.tdcEvents[tdc].words)
             tot_length += length
-        event_number[tdc].append(tot_length)
+        event_number.append(tot_length)
     return event_number
 
+def abs_badVsgood_hits(event_chunk):
+    event_number = [[0,0] for tdc in range(5)] #(good, bad)
+    for tdc in range(5):
+        tot_length = 0
+        for event in event_chunk:
+            for hit in event.tdcEvents[tdc].words:
+                time = (hit & 0xfffff) #*(25/32)
+                if 200 < time < 300:
+                    event_number[tdc][0] += 1
+                else:
+                    event_number[tdc][1] += 1
+    return event_number
 
 
 def compile_and_plot_tof(dTs, rpc_indicies=[[0,1], [0,2], [0,3], [0,4], [0,5]], pdf_filename = "Data_output/compiled_tof_plots.pdf"):

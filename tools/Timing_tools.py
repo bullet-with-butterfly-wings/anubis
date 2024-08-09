@@ -164,7 +164,14 @@ def plot_tdc_error_times_custom_ranges(TDC_error_time, ranges, output_pdf='TDC_e
             plt.figure(figsize=(12, 8))
             text_offset = text_offset_base
             for i, (range_start, range_end) in enumerate(ranges):
-                min_times = [entry[0] for entry, process in TDC_error_time[tdc] if range_start <= process < range_end]
+                min_times = []
+                event_count = 0
+                last_process = -1
+                for entry, process in TDC_error_time[tdc]:
+                    if last_process > process:
+                        event_count += 2500
+                    if range_start <= process+event_count < range_end:
+                        min_times.append(entry[0])
 
                 counts, bin_edges = np.histogram(min_times, bins=bins)
                 bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
@@ -270,8 +277,8 @@ def plot_tdc_error_channels_custom_ranges(TDC_error_time, ranges, tdcs_to_plot=N
     with PdfPages(output_pdf) as pdf:
         for tdc in tdcs_to_plot:
             plt.figure(figsize=(24, 12))
-            event_count = 0
             for i, (range_start, range_end) in enumerate(ranges):
+                event_count = 0
                 good_channels_dict = []
                 bad_channels_dict = []
                 last_process = -1
@@ -285,11 +292,15 @@ def plot_tdc_error_channels_custom_ranges(TDC_error_time, ranges, tdcs_to_plot=N
                         else:
                             bad_channels_dict.append(channel)
                     last_process = process
-                print(event_count)
+                #print(good_channels_dict)
                 # Plotting good channels
                 plt.subplot(2, len(ranges), i + 1)
                 if good_channels_dict:
-                    plt.hist(good_channels_dict, bins=128, alpha=0.7, edgecolor=colors[tdc],
+                    if tdc == 4:
+                        plt.hist(good_channels_dict, bins=64, alpha=0.7, edgecolor=colors[tdc],
+                                label=f'TDC {tdc} ({range_start}-{range_end}) Good', histtype='step', linewidth=2, color=colors[tdc])
+                    else:
+                        plt.hist(good_channels_dict, bins=128, alpha=0.7, edgecolor=colors[tdc],
                              label=f'TDC {tdc} ({range_start}-{range_end}) Good', histtype='step', linewidth=2, color=colors[tdc])
                 plt.xlabel('Channel')
                 plt.ylabel('Events')
@@ -300,7 +311,11 @@ def plot_tdc_error_channels_custom_ranges(TDC_error_time, ranges, tdcs_to_plot=N
                 # Plotting bad channels
                 plt.subplot(2, len(ranges), len(ranges) + i + 1)
                 if bad_channels_dict:
-                    plt.hist(bad_channels_dict, bins=128, alpha=0.7, edgecolor=colors[tdc],
+                    if tdc == 4:
+                        plt.hist(bad_channels_dict, bins=64, alpha=0.7, edgecolor=colors[tdc],
+                             label=f'TDC {tdc} ({range_start}-{range_end}) Bad', histtype='step', linewidth=2, linestyle='--', color=colors[tdc])
+                    else:
+                        plt.hist(bad_channels_dict, bins=64, alpha=0.7, edgecolor=colors[tdc],
                              label=f'TDC {tdc} ({range_start}-{range_end}) Bad', histtype='step', linewidth=2, linestyle='--', color=colors[tdc])
                 plt.xlabel('Channel')
                 plt.ylabel('Events')

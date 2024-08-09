@@ -74,7 +74,7 @@ def tdcChanToRPCHit(word, tdc, event_num):
             eta = False
             rpc = 5
         #was there * 0.8 time idk
-        return rpc, rpcHit(rpcChan, tdcHitTime, eta, event_num, rpc)
+        return rpc, rpcHit(rpcChan, (25/32)*tdcHitTime, eta, event_num, rpc)
 
 def find_tdc_alignment_metric(tdc0, tdc1):
     if tdc0 > tdc1:

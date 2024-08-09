@@ -1,6 +1,7 @@
 import importlib
 import sys
 from tqdm import tqdm
+import numpy as np
 import  os
 import glob
 # Add the directories to the sys.path
@@ -22,17 +23,17 @@ hep.style.use([hep.style.ATLAS])
 data_list = sorted([f for f in os.listdir("data") if os.path.isfile(os.path.join("data", f))], reverse=True) ##all files in data directory sorted from the newest to the oldest
 
 file_path = [dir_path+"//data//"+"proAnubis_240731_0217.raw"] #list(map(lambda p: dir_path+"//data//"+p, data_list))[:1] # insert your file
+def time_events(eventChunk):
+    for event in eventChunk:
+        print(event.tdcEvents[0].time)
 
 def hitHeatMap(eventChunk, tdc):
-    print(len(eventChunk))
-    print(eventChunk[0].tdcEvents[tdc].words)
     last_rpc = -1
+    heatMap = np.zeros((32,64))
     for tdc in range(5):
+        print(eventChunk[2].tdcEvents[tdc].time)
         for word in eventChunk[2].tdcEvents[tdc].words:
             _, hit = ATools.tdcChanToRPCHit(word, tdc, 1)
-            if last_rpc != hit.rpc:
-                print(f"RPC{hit.rpc}")
-                last_rpc = hit.rpc
             print(hit)
    # times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in bad_channels[tdc]]
             

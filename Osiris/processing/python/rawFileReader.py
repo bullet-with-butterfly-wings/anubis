@@ -47,6 +47,7 @@ class fileReader():
         for event in range(len(self.evtBuilder.events)):
             evts.append(self.evtBuilder.events.pop(0))
         return evts
+    
     def skip_events(self, count):
         init = count
         with tqdm(total=count, desc="Skipping Events", unit='Events') as pbar:
@@ -64,14 +65,18 @@ class fileReader():
         evts_chunk = []
         tdc_mets = [0 for tdc in range(5)]
         TDC_error_time = [[] for tdc in range(5)]
+        bad_channels = [[32],[0,96],[64],[31,32],[0,1,2,3]]
         i = 0
         while i < interval:
             if not self.readBlock():
                 print("Bad Block Read")
                 break
-            if(self.hasEvents()):
-                for event in range(len(self.evtBuilder.events)):
-                    evts_chunk.append(self.evtBuilder.events.pop(0))
+            if(self.hasEvents()): #my part
+                for events in range(len(self.evtBuilder.events)):
+                    new_events = self.evtBuilder.events.pop(0)
+                    for tdc in range(5):
+                        new_events.tdcEvents[tdc].words = [w for w in new_events.tdcEvents[tdc].words if (w >> 24) & 0x7f not in bad_channels[tdc]] 
+                    evts_chunk.append(new_events)
                     i += 1
                     self.tdc_monitoring_counter += 1
         aligned, realigned = self.doRealign(evts_chunk, order)
@@ -135,7 +140,7 @@ class fileReader():
         else:
             self.adjustment = 0
             
-    def monitor_tdc_state(self, recordtimes=False):
+    def monitor_tdc_state(self, recordtimes=False, only_min=False):
         TDC_error_time = [[] for tdc in range(5)]
         tdc_mets = [[] for tdc in range(5)]
         bad_channels = [[32],[0,96],[64],[31,32],[0,1,2,3]]
