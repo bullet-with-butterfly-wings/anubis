@@ -15,7 +15,7 @@ def readTimeStamp(tsData):
     return datetime.datetime.fromtimestamp(tStamp[0]+tStamp[1]/1000000000)
 
 class fileReader():
-    def __init__(self,filename,activeTDCs=[tdc for tdc in range(6)]):
+    def __init__(self,filename,activeTDCs=[tdc for tdc in range(5)]):
         self.fname = filename
         importlib.reload(rawEventBuilder)
         self.evtBuilder = rawEventBuilder.eventBuilder(activeTDCs=activeTDCs)
@@ -66,6 +66,7 @@ class fileReader():
         tdc_mets = [0 for tdc in range(5)]
         TDC_error_time = [[] for tdc in range(5)]
         bad_channels = [[32],[0,96],[64],[31,32],[0,1,2,3]]
+        self.adjustment = 50
         i = 0
         while i < interval:
             if not self.readBlock():
@@ -81,8 +82,8 @@ class fileReader():
                     self.tdc_monitoring_counter += 1
         aligned, realigned = self.doRealign(evts_chunk, order)
         self.check_alignment_status(aligned, realigned) 
-        self.update_adjustment_window(realigned)
-        self.global_alignment = True
+        #self.update_adjustment_window(realigned)
+        #self.global_alignment = True #so i have always something
         self.tdc_monitoring_event_buffer.extend(evts_chunk)
         if self.tdc_monitoring_counter >= 2500:
             #print(self.tdc_monitoring_counter)
@@ -109,7 +110,7 @@ class fileReader():
                 aligned = False
                 for testOffset in offsetlist:
                     testAlignMet = aTools.calcAvgAlign(event_chunk, offSet=testOffset, i=x, j=y, k=l, l=m, tdc1=i, tdc0=j, processedEvents=0, skipChans=skipChans)
-                    if testAlignMet < 15:
+                    if -1 < testAlignMet < 15:
                         updates[idx] += (testOffset)
                         realigned = True
                         break
@@ -120,13 +121,13 @@ class fileReader():
         return aligned, realigned
     
     
-    def check_alignment_status(self, aligned, realigned):
+    def check_alignment_status(self, aligned, realigned): #my correction
         if not aligned and not realigned:
             self.lastWasBad = True
             self.global_alignment = False
         elif not aligned and realigned:
             self.lastWasBad = False
-            self.global_alignment = False
+            self.global_alignment = True #False
         elif aligned and not realigned:
             self.lastWasBad = False
             self.global_alignment = True
@@ -138,6 +139,7 @@ class fileReader():
         if self.lastWasBad and not realigned:
             if self.adjustment < 20:
                 self.adjustment += 1
+                print(self.adjustment)
         else:
             self.adjustment = 0
             

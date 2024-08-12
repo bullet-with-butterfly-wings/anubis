@@ -108,7 +108,7 @@ def find_tdc_alignment_metric(tdc0, tdc1):
     return i, j, k, l
         
 def testAlign(rpc1Hits, rpc2Hits, skipChans = []):
-    minTimes = [3000,3000]
+    minTimes = [300,300]
     minChans = [-1,-1]
     if len(rpc1Hits)<1 or len(rpc2Hits)<1:
         return -1
