@@ -36,6 +36,11 @@ def abs_count(eventChunk):
                 if word & 0xfffff < 300 and (word >> 24) & 0x7f not in bad_channels[tdc]:                    
                     total[tdc] += 1
     return total
+def all_hits_event(event):
+    for tdc in range(5):
+
+        for word in event.tdcEvents[tdc].words:
+            _, hit = ATools.tdcChanToRPCHit(word, tdc, 1)
 
 def all_hits(eventChunk, tdc1, tdc2, event_num):
     for i, event in enumerate(eventChunk[:event_num]):

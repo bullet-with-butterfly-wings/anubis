@@ -1,7 +1,7 @@
 # Python specific files
-Osiris/processing/python/__pycache__/
+Osiris\processing\python\__pycache__\*
 *.py[cod]
-output/
+output/*
 *.so
 .Python
 env/
@@ -18,4 +18,4 @@ pip-delete-this-directory.txt
 *.code-workspace
 
 # Mine
-data/*.raw
+data/*
