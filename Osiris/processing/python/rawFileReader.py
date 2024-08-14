@@ -59,6 +59,7 @@ class fileReader():
                     count -= len(self.evtBuilder.events)
                     pbar.update(len(self.evtBuilder.events))
                     self.evtBuilder.events.clear()
+        self.evtBuilder = rawEventBuilder.eventBuilder()
         return init-count
         
     def get_aligned_events(self, order = [(0,1), (1,2), (2,3), (3,4)], interval = 100, extract_tdc_mets = False):

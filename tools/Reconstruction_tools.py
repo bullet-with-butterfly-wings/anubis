@@ -78,9 +78,9 @@ def cluster(coincident_hits):
 
     for coincidence_event in coincident_hits:
 
-        coincident_event_clustered = [coincidence_event[0], coincidence_event[1], []]
-
-        hit_locations = coincidence_event[2]
+        coincident_event_clustered = [coincidence_event[0], coincidence_event[1], []] #event, time, []
+        hit_locations = coincidence_event[2] #hit.rpc, hit.channel, hit.time, hit.eta
+        #print(hit_locations)
         phi_locations = [x for x in hit_locations if x[3] == False]
         eta_locations = [x for x in hit_locations if x[3] == True]
 

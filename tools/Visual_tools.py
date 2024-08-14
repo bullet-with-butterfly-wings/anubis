@@ -36,11 +36,14 @@ def abs_count(eventChunk):
                 if word & 0xfffff < 300 and (word >> 24) & 0x7f not in bad_channels[tdc]:                    
                     total[tdc] += 1
     return total
-def all_hits_event(event):
-    for tdc in range(5):
 
+def all_hits_event(event):
+    buffer = []
+    for tdc in range(5):
         for word in event.tdcEvents[tdc].words:
             _, hit = ATools.tdcChanToRPCHit(word, tdc, 1)
+            buffer.append(hit)
+    return buffer
 
 def all_hits(eventChunk, tdc1, tdc2, event_num):
     for i, event in enumerate(eventChunk[:event_num]):
@@ -81,20 +84,34 @@ def metric_possible(eventChunk, tdc1, tdc2):
             total += 1
     return total, good_1, good_2
 
-def hitHeatMap(eventChunk, tdc):
-    last_rpc = -1
+def hitHeatMap(event): #actually returns 6 heatmaps, one for each rpc
+    heatMaps = [np.zeros((32,64)) for rpc in range(6)]
+    for tdc in range(5):
+        for word in event.tdcEvents[tdc].words:
+            _, hit = ATools.tdcChanToRPCHit(word, tdc, 0)
+            if hit.time < 300:
+                if hit.eta:
+                    heatMaps[hit.rpc][hit.channel,:] += np.ones(64)
+                else:
+                    heatMaps[hit.rpc][:,hit.channel] += np.ones(32)
+    return heatMaps
+"""
+def hitHeatMap(eventChunk, evt_num):
     heatMap = np.zeros((32,64))
-    reconstructor = proAnubis_Analysis_Tools.Reconstructor(eventChunk, 0)
-    reconstructor.populate_hits()
-    cluster = reconstructor.make_cluster()
+    for evt_num, event in enumerate(eventChunk):
+        for tdc in range(5):
+            for word in event.tdcEvents[tdc].words:
+                _, hit = ATools.tdcChanToRPCHit(word, tdc, evt_num)
+""" 
+                
     # Finally, recontruction is done using cluster information
-    reconstructor.reconstruct_and_extrapolate(cluster)
-    
+"""
     for tdc in range(5):
         print(eventChunk[2].tdcEvents[tdc].time)
         for word in eventChunk[2].tdcEvents[tdc].words:
             _, hit = ATools.tdcChanToRPCHit(word, tdc, 1)
             print(hit)
+    """
    # times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in bad_channels[tdc]]
             
     

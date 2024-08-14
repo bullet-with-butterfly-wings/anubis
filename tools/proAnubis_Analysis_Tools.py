@@ -37,7 +37,7 @@ class Reconstructor():
         self.window_size = coincidence_window
         self.tof_correction = tof_correction
         self.processedEvents = processsed_event
-        self.tol = [i for i in range(20)] if tolerance is None else tolerance
+        self.tol = [i/10 for i in range(100)] if tolerance is None else tolerance
         self.dT = []
         self.recon = []
         
