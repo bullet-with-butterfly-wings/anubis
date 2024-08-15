@@ -20,3 +20,5 @@ pip-delete-this-directory.txt
 # Mine
 data/*
 images_video/*
+*.png
+*.mp4

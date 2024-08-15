@@ -48,6 +48,11 @@ class fileReader():
             evts.append(self.evtBuilder.events.pop(0))
         return evts
     
+    def getTDCFiveEvents(self):
+        tdc5Evts = self.evtBuilder.tdcFiveBuffer.copy()
+        self.evtBuilder.tdcFiveBuffer = []
+        return tdc5Evts
+
     def skip_events(self, count):
         init = count
         with tqdm(total=count, desc="Skipping Events", unit='Events') as pbar:
@@ -59,7 +64,7 @@ class fileReader():
                     count -= len(self.evtBuilder.events)
                     pbar.update(len(self.evtBuilder.events))
                     self.evtBuilder.events.clear()
-        self.evtBuilder = rawEventBuilder.eventBuilder()
+        self.reload_event_builder()
         return init-count
         
     def get_aligned_events(self, order = [(0,1), (1,2), (2,3), (3,4)], interval = 100, extract_tdc_mets = False):
@@ -73,6 +78,7 @@ class fileReader():
             if not self.readBlock():
                 print("Bad Block Read")
                 break
+            print(self.hasEvents())
             if(self.hasEvents()): #my part
                 for events in range(len(self.evtBuilder.events)):
                     new_events = self.evtBuilder.events.pop(0)
@@ -86,7 +92,7 @@ class fileReader():
         #self.update_adjustment_window(realigned)
         #self.global_alignment = True #so i have always something
         self.tdc_monitoring_event_buffer.extend(evts_chunk)
-        if self.tdc_monitoring_counter >= 2500:
+        if self.tdc_monitoring_counter >= 200:
             #print(self.tdc_monitoring_counter)
             TDC_error_time, tdc_mets = self.monitor_tdc_state(recordtimes=True, only_min=True)
             self.tdc_monitoring_event_buffer.clear()
@@ -143,7 +149,7 @@ class fileReader():
                 print(self.adjustment)
         else:
             self.adjustment = 0
-            
+    
     def monitor_tdc_state(self, recordtimes=False, only_min=False):
         TDC_error_time = [[] for tdc in range(5)]
         tdc_mets = [[] for tdc in range(5)]
@@ -151,7 +157,7 @@ class fileReader():
         for tdc in range(5):
             poor_time_count = 0
             good_time_count = 0
-            for i, event in enumerate(self.tdc_monitoring_event_buffer[-(2500):]):
+            for i, event in enumerate(self.tdc_monitoring_event_buffer[-(200):]):
                 words = event.tdcEvents[tdc].words
                 times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in bad_channels[tdc]]
                 
@@ -220,9 +226,7 @@ class fileReader():
            return False
        tdcReadData = self.data.read(nWords*self.wordSize)
        self.bytesRead = self.bytesRead+self.wordSize*(nWords+3)
-       #Skip the fifth TDC for now
-       if thisTDC<5:
-           self.evtBuilder.addTDCRead(thisTDC, thisTime, tdcReadData, p)
+       self.evtBuilder.addTDCRead(thisTDC, thisTime, tdcReadData, p)
        return True
    
     def reload_event_builder(self):
