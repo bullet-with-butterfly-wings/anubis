@@ -72,13 +72,11 @@ class fileReader():
         tdc_mets = [0 for tdc in range(5)]
         TDC_error_time = [[] for tdc in range(5)]
         bad_channels = [[32],[0,96],[64],[31,32],[0,1,2,3]]
-        self.adjustment = 50
         i = 0
         while i < interval:
             if not self.readBlock():
                 print("Bad Block Read")
                 break
-            print(self.hasEvents())
             if(self.hasEvents()): #my part
                 for events in range(len(self.evtBuilder.events)):
                     new_events = self.evtBuilder.events.pop(0)
@@ -89,10 +87,9 @@ class fileReader():
                     self.tdc_monitoring_counter += 1
         aligned, realigned = self.doRealign(evts_chunk, order)
         self.check_alignment_status(aligned, realigned) 
-        #self.update_adjustment_window(realigned)
-        #self.global_alignment = True #so i have always something
+        self.update_adjustment_window(realigned)
         self.tdc_monitoring_event_buffer.extend(evts_chunk)
-        if self.tdc_monitoring_counter >= 200:
+        if self.tdc_monitoring_counter >= 2500:
             #print(self.tdc_monitoring_counter)
             TDC_error_time, tdc_mets = self.monitor_tdc_state(recordtimes=True, only_min=True)
             self.tdc_monitoring_event_buffer.clear()
@@ -157,7 +154,7 @@ class fileReader():
         for tdc in range(5):
             poor_time_count = 0
             good_time_count = 0
-            for i, event in enumerate(self.tdc_monitoring_event_buffer[-(200):]):
+            for i, event in enumerate(self.tdc_monitoring_event_buffer[-(2500):]):
                 words = event.tdcEvents[tdc].words
                 times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in bad_channels[tdc]]
                 
@@ -219,14 +216,15 @@ class fileReader():
        thisTDC = headWord[0]>>24
        nWords = headWord[0]&0xffffff
        if thisTDC>5:
-           print("Bad TDC - number is",thisTDC,", header word was:",hex(leadWords[2]))
+           #print("Bad TDC - number is",thisTDC,", header word was:",hex(leadWords[2]))
            return False
        if self.bytesRead+nWords>(self.fsizeBytes-2*self.wordSize):
            print("Going to over-read the file. Corrupted number of bytes? Header is", hex(leadWords[2]))
            return False
        tdcReadData = self.data.read(nWords*self.wordSize)
        self.bytesRead = self.bytesRead+self.wordSize*(nWords+3)
-       self.evtBuilder.addTDCRead(thisTDC, thisTime, tdcReadData, p)
+       if thisTDC < 5:
+           self.evtBuilder.addTDCRead(thisTDC, thisTime, tdcReadData, p)
        return True
    
     def reload_event_builder(self):
