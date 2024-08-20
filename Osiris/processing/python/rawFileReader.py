@@ -143,7 +143,6 @@ class fileReader():
         if self.lastWasBad and not realigned:
             if self.adjustment < 20:
                 self.adjustment += 1
-                print(self.adjustment)
         else:
             self.adjustment = 0
     

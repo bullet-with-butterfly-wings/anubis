@@ -27,12 +27,13 @@ def readTimeStamp(timestamp):
 
 
 class BCR():
-    def __init__(self, hitTime, event_time, bcr_count):
+    def __init__(self, hitTime, event_time, bcr_count, error = False):
         self.hitTime = hitTime
         self.event_time = event_time
         self.timeStamp = datetime.datetime.timestamp(event_time)+bcr_count*89100/10**9
         self.bcr_count = bcr_count
         self.triggers = []
+        self.error = error
     
     def __str__(self):
         return f"""BCR({self.hitTime}*25/32 ns, {readTimeStamp(self.timeStamp)}, {self.event_time},{self.bcr_count}) \n    Triggers: {[str(t) for t in self.triggers]})"""
@@ -66,6 +67,7 @@ class AtlasAnalyser():
         self.anubis_file = None
         self.atlas_file = None
         self.fReader = None
+        self.tDiff = []
         self.anubis_data = []
         self.atlas_data = []
         
@@ -92,7 +94,44 @@ class AtlasAnalyser():
             else:
                 evt_num = amount_of_events
 
-    def _readingRoutine(self, tdc5Reads,trigger_channel, bcr_channel, previous_event_time):
+    def correctionBCR(self):
+        #if difference < 10 => space evenly
+        #
+        last = 0
+        current = 0
+        bad_stage = False
+        shift = 0
+        histogram = []
+        counter = 0
+        while current < len(self.anubis_data):
+            if self.anubis_data[current].error and not bad_stage:
+               last = current - 1
+               bad_stage = True
+            elif not self.anubis_data[current].error and bad_stage: # transtition to good
+                    exp = ((current-last)*114_048) % 1_048_575
+                    actual = (self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575
+                    histogram.append(current-last)
+                    if not ((actual-exp) % 114_048 < 5 or abs((actual-exp) % 114_048 - 114_048) < 5) and not 91900 < (actual-exp) % 114_048 < 91907:
+                        counter += current-last
+                        print("Jump, ", current-last)
+                        print("Expecting", exp)
+                        print("Actual", actual)
+                        print("Difference:", actual-exp)
+                        print("Mod Difference:", (actual-exp) % 114_048)    
+                        print("Error time:", self.anubis_data[current].event_time)
+                    bad_stage = False
+            current += 1
+        plt.xlabel("Length")
+        plt.ylabel("Frequency")
+        plt.title("Distribution of the flagged region")
+        plt.grid()
+        plt.hist(histogram, bins = [i+0.5 for i in range(1, 25)], histtype="step", label=f'Length of the flagged region')
+        plt.show()
+        return counter
+                   
+                   
+
+    def _readingRoutine(self, tdc5Reads,trigger_channel, bcr_channel, previous_event_time, previous_last_bcr):
         bcr_count = 1
         tdcEvent = tdc5Reads[0] #actual pile of data (timestamp, data)
         current_bcr = BCR(-1, previous_event_time, bcr_count)
@@ -104,8 +143,17 @@ class AtlasAnalyser():
                     if not current_bcr.hitTime == -1:
                         self.anubis_data.append(current_bcr)
                         bcr_count += 1
-                    # looking at the event time before
-                    current_bcr = BCR(tdcHitTime, previous_event_time, bcr_count)
+                        delta = tdcHitTime - current_bcr.hitTime 
+                        if delta < 0:
+                            delta += 1_048_575
+                        self.tDiff.append(delta)
+                    else:
+                        delta = tdcHitTime - previous_last_bcr
+                        if delta < 0:
+                            delta += 1_048_575
+                        #self.tDiff.append(delta)
+                    current_bcr = BCR(tdcHitTime, previous_event_time, bcr_count, error = abs(delta - 114_048) > 5)
+            
             elif tdcChannel == trigger_channel:
                 if not current_bcr:
                     print("No BCR found for trigger")
@@ -118,7 +166,7 @@ class AtlasAnalyser():
             else:
                 pass
                 #print("Unknown Channel", tdcChannel)
-        return  tdcEvent[0]
+        return  tdcEvent[0], current_bcr.hitTime
 
     def getTDC5Data(self,file, trigger_channel, bcr_channel = 0, amount_of_events=100, fromPKL = False, ):
         i = 0
@@ -148,10 +196,11 @@ class AtlasAnalyser():
             i += 1
             if i == 1:
                 previous_event_time = tdc5Reads[0][0]
+                previous_last_bcr = 0 #the ambiguity
                 continue
 
-            previous_event_time = self._readingRoutine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time)
-        
+            previous_event_time, previous_last_bcr = self._readingRoutine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time, previous_last_bcr)
+            #print(previous_event_time)
         return self.anubis_data
 
     def getAtlasData(self, file):
