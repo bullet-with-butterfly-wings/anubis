@@ -106,25 +106,26 @@ class AtlasAnalyser():
                last = current - 1
                bad_stage = True
             elif not self.anubis_data[current].error and bad_stage: # transtition to good
+                    bad_stage = False
+                    jump = current - last
                     exp = ((current-last)*114_048) % 1_048_575
                     actual = (self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575 #what if it goes over one cylce
-                    bad_stage = False
-                    if abs(actual - exp) < 5: #non-regularly spaced
+                        
+                    if abs(actual - exp) < 50: #non-regularly spaced
                         jump = current - last
                         step = ((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575) // jump
                         for bad in range(last+1, current):
                            self.anubis_data[bad].hitTime = (self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575
                            self.anubis_data[bad].error = False
-                        print("Short")
-                    elif (actual - exp) % 114_048 < 5 or 114_048 - ((actual - exp) % 114_048) < 5: # missed event(s)
+                        
+                    elif (actual - exp) % 114_048 < 50 or 114_048 - ((actual - exp) % 114_048) < 50: # missed event(s)
                         print("last", last)
                         print("Jump", current-last)
-                        if current-last > 9:
-                            counter += current-last
                         print("Expecting", exp)
                         print("Actual", actual)
                         print("Difference:", actual-exp)
-                        print("Mod Difference:", (actual-exp) % 114_048)    
+                        print("Mod Difference:", (actual-exp) % 114_048)
+                        print("Mod Difference shifted:", (1_048_575 + actual-exp) % 114_048)    
                         print("Error time:", self.anubis_data[current].event_time)
                         print(((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575)/114_048)
                         jump = round(((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575)/114_048)
@@ -139,6 +140,21 @@ class AtlasAnalyser():
                             self.anubis_data.insert(bad, BCR((self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575, self.anubis_data[current].event_time, self.anubis_data[current].bcr_count + bad -current ))
                             print(self.anubis_data[bad])                        
                         print("Happened")
+                    elif 91900< (actual-exp) % 114_048 < 91910:
+                        jump = round((actual-exp + 1048575) / 114_048)
+                        print((actual-exp + 1048575) / 114_048)
+                        diff = jump - (current-last)
+                        step = ((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575 + 1_048_575)//jump #i think we might be fuck if it overturns
+                        triggers = [] # I will need to figure out triggers too
+                        for bad in range(last+1, current):
+                           triggers.append(self.anubis_data[bad].triggers)
+                           self.anubis_data[bad].hitTime = (self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575
+                           self.anubis_data[bad].error = False
+                        for bad in range(current, current+diff):
+                            self.anubis_data.insert(bad, BCR((self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575, self.anubis_data[current].event_time, self.anubis_data[current].bcr_count + bad -current ))
+                            print(self.anubis_data[bad])                     
+
+
                     
             current += 1
         return counter
@@ -149,6 +165,7 @@ class AtlasAnalyser():
         bcr_count = 1
         tdcEvent = tdc5Reads[0] #actual pile of data (timestamp, data)
         current_bcr = BCR(-1, previous_event_time, bcr_count)
+        counter = 0
         for word in tdcEvent[1]:
             tdcChannel = (word>>24)&0x7f
             tdcHitTime = word&0xfffff
@@ -156,7 +173,6 @@ class AtlasAnalyser():
                 if tdcHitTime != current_bcr.hitTime: #avoid repetition
                     if not current_bcr.hitTime == -1:
                         self.anubis_data.append(current_bcr)
-                        bcr_count += 1
                         delta = tdcHitTime - current_bcr.hitTime 
                         if delta < 0:
                             delta += 1_048_575
@@ -166,6 +182,7 @@ class AtlasAnalyser():
                         if delta < 0:
                             delta += 1_048_575
                         #self.tDiff.append(delta)
+                    bcr_count += 1
                     current_bcr = BCR(tdcHitTime, previous_event_time, bcr_count, error = abs(delta - 114_048) > 5)
             
             elif tdcChannel == trigger_channel:
