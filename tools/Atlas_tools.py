@@ -100,8 +100,6 @@ class AtlasAnalyser():
         last = 0
         current = 0
         bad_stage = False
-        shift = 0
-        histogram = []
         counter = 0
         while current < len(self.anubis_data):
             if self.anubis_data[current].error and not bad_stage:
@@ -109,24 +107,40 @@ class AtlasAnalyser():
                bad_stage = True
             elif not self.anubis_data[current].error and bad_stage: # transtition to good
                     exp = ((current-last)*114_048) % 1_048_575
-                    actual = (self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575
-                    histogram.append(current-last)
-                    if not ((actual-exp) % 114_048 < 5 or abs((actual-exp) % 114_048 - 114_048) < 5) and not 91900 < (actual-exp) % 114_048 < 91907:
-                        counter += current-last
-                        print("Jump, ", current-last)
+                    actual = (self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575 #what if it goes over one cylce
+                    bad_stage = False
+                    if abs(actual - exp) < 5: #non-regularly spaced
+                        jump = current - last
+                        step = ((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575) // jump
+                        for bad in range(last+1, current):
+                           self.anubis_data[bad].hitTime = (self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575
+                           self.anubis_data[bad].error = False
+                        print("Short")
+                    elif (actual - exp) % 114_048 < 5 or 114_048 - ((actual - exp) % 114_048) < 5: # missed event(s)
+                        print("last", last)
+                        print("Jump", current-last)
+                        if current-last > 9:
+                            counter += current-last
                         print("Expecting", exp)
                         print("Actual", actual)
                         print("Difference:", actual-exp)
                         print("Mod Difference:", (actual-exp) % 114_048)    
                         print("Error time:", self.anubis_data[current].event_time)
-                    bad_stage = False
+                        print(((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575)/114_048)
+                        jump = round(((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575)/114_048)
+                        diff = jump - (current-last)
+                        step = ((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575)//jump #i think we might be fuck if it overturns
+                        triggers = [] # I will need to figure out triggers too
+                        for bad in range(last+1, current):
+                           triggers.append(self.anubis_data[bad].triggers)
+                           self.anubis_data[bad].hitTime = (self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575
+                           self.anubis_data[bad].error = False
+                        for bad in range(current, current+diff):
+                            self.anubis_data.insert(bad, BCR((self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575, self.anubis_data[current].event_time, self.anubis_data[current].bcr_count + bad -current ))
+                            print(self.anubis_data[bad])                        
+                        print("Happened")
+                    
             current += 1
-        plt.xlabel("Length")
-        plt.ylabel("Frequency")
-        plt.title("Distribution of the flagged region")
-        plt.grid()
-        plt.hist(histogram, bins = [i+0.5 for i in range(1, 25)], histtype="step", label=f'Length of the flagged region')
-        plt.show()
         return counter
                    
                    
