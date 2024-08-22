@@ -71,9 +71,9 @@ class AtlasAnalyser():
         self.anubis_data = []
         self.atlas_data = []
         
-    def printBCR(self, amount_of_bcr):
-        i = 0
-        while i < amount_of_bcr:
+    def printBCR(self, a,b):
+        i = a
+        while i < b:
             print(self.anubis_data[i])
             i += 1
 
@@ -101,35 +101,56 @@ class AtlasAnalyser():
         counter = 0
         period = 1_048_575
         interval = 114_048
+        cycle = 0
         while current < len(self.anubis_data):
             now_bcr = self.anubis_data[current]
+            
+            if current != 0 and now_bcr.hitTime - self.anubis_data[current-1].hitTime < -2e5: #magic number
+                cycle += 1
+            now_bcr.cycle = cycle
+
             if now_bcr.error and not bad_stage:
+                print("Bad stage started:", current)
                 bad_stage = True
                 last = current - 1
                 triggers = [now_bcr.triggers] #handle triggers later
             good_bcr = self.anubis_data[last]
             
             if bad_stage:
+                print("In bad stage:", current)
+                print(now_bcr)
                 delta = now_bcr.hitTime - good_bcr.hitTime
                 if delta < 0:
                     delta += period
+                print("Delta:", delta)
                 if  delta % interval < 50 or interval - (delta % interval) < 50: #no overflow
-                    prob_bcr_count  = round((now_bcr.hitTime - good_bcr.hitTime) / interval)
+                    prob_bcr_count  = round(delta / interval)
                     obs_bcr_count = current - last
-                    print("Last:", last)
-                    print("Current:", current)
-                    print(delta)
-                    print(self.anubis_data[last-4:current+4])
                     for bad_bcr in range(last+1, current): #remove and replace
                         del self.anubis_data[last+1]
                     #print(self.anubis_data[last-4:current+4])
                     for new_bcr in range(1,prob_bcr_count):
-                        self.anubis_data.insert(last+new_bcr, BCR(good_bcr.hitTime+(new_bcr)*interval, good_bcr.event_time, good_bcr.bcr_count)) # will need to think about other data
-                    good_bcr.error = False
+                        self.anubis_data.insert(last+new_bcr, BCR((good_bcr.hitTime+(new_bcr)*interval) % period, good_bcr.event_time, good_bcr.bcr_count)) # will need to think about other data
+                    now_bcr.error = False
                     bad_stage = False
                     #print(self.anubis_data[last-4:current+4])
-                    #current += prob_bcr_count-obs_bcr_count+1
+
                     #bcr_number += prob_bcr_count-obs_bcr_count+1
+                    print("Sorted:", current)
+                    print("Events added:", prob_bcr_count-obs_bcr_count)
+                    self.printBCR(current,current+5)
+                    current += prob_bcr_count-obs_bcr_count
+                    
+                else:
+                    if current - last > 9:
+                        print("Give up")
+                        bad_stage = False
+                        self.anubis_data[current+1].error = False
+
+                if not now_bcr.error and bad_stage:
+                    print("Fixed")
+                    bad_stage = False
+
             current += 1
         return counter
                    
@@ -140,6 +161,8 @@ class AtlasAnalyser():
         tdcEvent = tdc5Reads[0] #actual pile of data (timestamp, data)
         current_bcr = None
         counter = 0
+        period = 1_048_575
+        interval = 114_048
         for word in tdcEvent[1]:
             tdcChannel = (word>>24)&0x7f
             tdcHitTime = word&0xfffff
@@ -148,13 +171,14 @@ class AtlasAnalyser():
                     delta = tdcHitTime - previous_last_bcr
                 else:
                     delta = tdcHitTime - current_bcr.hitTime
-                
                 if delta < 0:
-                    delta += 1_048_575
+                    delta += period
+
                 if not current_bcr or current_bcr.hitTime != tdcHitTime: 
                     bcr_count += 1            
-                    current_bcr = BCR(tdcHitTime, previous_event_time, bcr_count, error = abs(delta - 114_048) > 50)
+                    current_bcr = BCR(tdcHitTime, previous_event_time, bcr_count, error = abs(delta - interval) > 50)
                     self.anubis_data.append(current_bcr)
+           
             elif tdcChannel == trigger_channel:
                 if not current_bcr: #corresponds to the last BCR
                     self.anubis_data[-1].add_trigger(Trigger(tdcHitTime))
@@ -167,7 +191,8 @@ class AtlasAnalyser():
             else:
                 pass
                 #print("Unknown Channel", tdcChannel)
-        return  tdcEvent[0], current_bcr.hitTime
+        a = current_bcr.hitTime if current_bcr else previous_last_bcr
+        return  tdcEvent[0], a#current_bcr.hitTime
 
     def getTDC5Data(self,file, trigger_channel, bcr_channel = 0, amount_of_events=100, fromPKL = False, ):
         i = 0
