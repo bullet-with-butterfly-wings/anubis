@@ -31,12 +31,13 @@ class BCR():
         self.hitTime = hitTime
         self.event_time = event_time
         self.timeStamp = datetime.datetime.timestamp(event_time)+bcr_count*89100/10**9
-        self.bcr_count = bcr_count
+        self.bcr_count = bcr_count #Do I needed??
+        self.cycle = 0
         self.triggers = []
         self.error = error
     
     def __str__(self):
-        return f"""BCR({self.hitTime}*25/32 ns, {readTimeStamp(self.timeStamp)}, {self.event_time},{self.bcr_count}) \n    Triggers: {[str(t) for t in self.triggers]})"""
+        return f"""BCR({self.hitTime}*25/32 ns, {readTimeStamp(self.timeStamp)}, {self.event_time},{self.bcr_count}, {self.error}) \n    Triggers: {[str(t) for t in self.triggers]})"""
 
     def add_trigger(self, trigger):
         delta = (trigger.hitTime-self.hitTime)
@@ -67,7 +68,6 @@ class AtlasAnalyser():
         self.anubis_file = None
         self.atlas_file = None
         self.fReader = None
-        self.tDiff = []
         self.anubis_data = []
         self.atlas_data = []
         
@@ -95,99 +95,69 @@ class AtlasAnalyser():
                 evt_num = amount_of_events
 
     def correctionBCR(self):
-        #if difference < 10 => space evenly
-        #
         last = 0
         current = 0
         bad_stage = False
         counter = 0
+        period = 1_048_575
+        interval = 114_048
         while current < len(self.anubis_data):
-            if self.anubis_data[current].error and not bad_stage:
-               last = current - 1
-               bad_stage = True
-            elif not self.anubis_data[current].error and bad_stage: # transtition to good
+            now_bcr = self.anubis_data[current]
+            if now_bcr.error and not bad_stage:
+                bad_stage = True
+                last = current - 1
+                triggers = [now_bcr.triggers] #handle triggers later
+            good_bcr = self.anubis_data[last]
+            
+            if bad_stage:
+                delta = now_bcr.hitTime - good_bcr.hitTime
+                if delta < 0:
+                    delta += period
+                if  delta % interval < 50 or interval - (delta % interval) < 50: #no overflow
+                    prob_bcr_count  = round((now_bcr.hitTime - good_bcr.hitTime) / interval)
+                    obs_bcr_count = current - last
+                    print("Last:", last)
+                    print("Current:", current)
+                    print(delta)
+                    print(self.anubis_data[last-4:current+4])
+                    for bad_bcr in range(last+1, current): #remove and replace
+                        del self.anubis_data[last+1]
+                    #print(self.anubis_data[last-4:current+4])
+                    for new_bcr in range(1,prob_bcr_count):
+                        self.anubis_data.insert(last+new_bcr, BCR(good_bcr.hitTime+(new_bcr)*interval, good_bcr.event_time, good_bcr.bcr_count)) # will need to think about other data
+                    good_bcr.error = False
                     bad_stage = False
-                    jump = current - last
-                    exp = ((current-last)*114_048) % 1_048_575
-                    actual = (self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575 #what if it goes over one cylce
-                        
-                    if abs(actual - exp) < 50: #non-regularly spaced
-                        jump = current - last
-                        step = ((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575) // jump
-                        for bad in range(last+1, current):
-                           self.anubis_data[bad].hitTime = (self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575
-                           self.anubis_data[bad].error = False
-                        
-                    elif (actual - exp) % 114_048 < 50 or 114_048 - ((actual - exp) % 114_048) < 50: # missed event(s)
-                        print("last", last)
-                        print("Jump", current-last)
-                        print("Expecting", exp)
-                        print("Actual", actual)
-                        print("Difference:", actual-exp)
-                        print("Mod Difference:", (actual-exp) % 114_048)
-                        print("Mod Difference shifted:", (1_048_575 + actual-exp) % 114_048)    
-                        print("Error time:", self.anubis_data[current].event_time)
-                        print(((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575)/114_048)
-                        jump = round(((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575)/114_048)
-                        diff = jump - (current-last)
-                        step = ((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575)//jump #i think we might be fuck if it overturns
-                        triggers = [] # I will need to figure out triggers too
-                        for bad in range(last+1, current):
-                           triggers.append(self.anubis_data[bad].triggers)
-                           self.anubis_data[bad].hitTime = (self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575
-                           self.anubis_data[bad].error = False
-                        for bad in range(current, current+diff):
-                            self.anubis_data.insert(bad, BCR((self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575, self.anubis_data[current].event_time, self.anubis_data[current].bcr_count + bad -current ))
-                            print(self.anubis_data[bad])                        
-                        print("Happened")
-                    elif 91900< (actual-exp) % 114_048 < 91910:
-                        jump = round((actual-exp + 1048575) / 114_048)
-                        print((actual-exp + 1048575) / 114_048)
-                        diff = jump - (current-last)
-                        step = ((self.anubis_data[current].hitTime - self.anubis_data[last].hitTime) % 1_048_575 + 1_048_575)//jump #i think we might be fuck if it overturns
-                        triggers = [] # I will need to figure out triggers too
-                        for bad in range(last+1, current):
-                           triggers.append(self.anubis_data[bad].triggers)
-                           self.anubis_data[bad].hitTime = (self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575
-                           self.anubis_data[bad].error = False
-                        for bad in range(current, current+diff):
-                            self.anubis_data.insert(bad, BCR((self.anubis_data[last].hitTime+(bad-last)*step) % 1_048_575, self.anubis_data[current].event_time, self.anubis_data[current].bcr_count + bad -current ))
-                            print(self.anubis_data[bad])                     
-
-
-                    
+                    #print(self.anubis_data[last-4:current+4])
+                    #current += prob_bcr_count-obs_bcr_count+1
+                    #bcr_number += prob_bcr_count-obs_bcr_count+1
             current += 1
         return counter
                    
                    
 
     def _readingRoutine(self, tdc5Reads,trigger_channel, bcr_channel, previous_event_time, previous_last_bcr):
-        bcr_count = 1
+        bcr_count = 0
         tdcEvent = tdc5Reads[0] #actual pile of data (timestamp, data)
-        current_bcr = BCR(-1, previous_event_time, bcr_count)
+        current_bcr = None
         counter = 0
         for word in tdcEvent[1]:
             tdcChannel = (word>>24)&0x7f
             tdcHitTime = word&0xfffff
             if tdcChannel == bcr_channel:
-                if tdcHitTime != current_bcr.hitTime: #avoid repetition
-                    if not current_bcr.hitTime == -1:
-                        self.anubis_data.append(current_bcr)
-                        delta = tdcHitTime - current_bcr.hitTime 
-                        if delta < 0:
-                            delta += 1_048_575
-                        self.tDiff.append(delta)
-                    else:
-                        delta = tdcHitTime - previous_last_bcr
-                        if delta < 0:
-                            delta += 1_048_575
-                        #self.tDiff.append(delta)
-                    bcr_count += 1
-                    current_bcr = BCR(tdcHitTime, previous_event_time, bcr_count, error = abs(delta - 114_048) > 5)
-            
+                if not current_bcr: #avoid repetition
+                    delta = tdcHitTime - previous_last_bcr
+                else:
+                    delta = tdcHitTime - current_bcr.hitTime
+                
+                if delta < 0:
+                    delta += 1_048_575
+                if not current_bcr or current_bcr.hitTime != tdcHitTime: 
+                    bcr_count += 1            
+                    current_bcr = BCR(tdcHitTime, previous_event_time, bcr_count, error = abs(delta - 114_048) > 50)
+                    self.anubis_data.append(current_bcr)
             elif tdcChannel == trigger_channel:
-                if not current_bcr:
-                    print("No BCR found for trigger")
+                if not current_bcr: #corresponds to the last BCR
+                    self.anubis_data[-1].add_trigger(Trigger(tdcHitTime))
                     continue
                 if not current_bcr.triggers:
                     current_bcr.add_trigger(Trigger(tdcHitTime))
@@ -227,7 +197,7 @@ class AtlasAnalyser():
             i += 1
             if i == 1:
                 previous_event_time = tdc5Reads[0][0]
-                previous_last_bcr = 0 #the ambiguity
+                previous_last_bcr = 620958 #the ambiguity
                 continue
 
             previous_event_time, previous_last_bcr = self._readingRoutine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time, previous_last_bcr)
