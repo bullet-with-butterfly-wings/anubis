@@ -113,7 +113,7 @@ class AtlasAnalyser():
                 print("Bad stage started:", current)
                 bad_stage = True
                 last = current - 1
-                triggers = [now_bcr.triggers] #handle triggers later
+                triggers = [] #handle triggers later
             good_bcr = self.anubis_data[last]
             
             if bad_stage:
@@ -131,6 +131,22 @@ class AtlasAnalyser():
                     #print(self.anubis_data[last-4:current+4])
                     for new_bcr in range(1,prob_bcr_count):
                         self.anubis_data.insert(last+new_bcr, BCR((good_bcr.hitTime+(new_bcr)*interval) % period, good_bcr.event_time, good_bcr.bcr_count)) # will need to think about other data
+                        for trig in triggers:
+                            previous = (good_bcr.hitTime+(new_bcr)*interval) % period
+                            next = (good_bcr.hitTime+(new_bcr+1)*interval) % period
+                            overflow = False
+                            if previous > next:
+                                next += period
+                                overflow = True
+                            if last < trig.hitTime < next or (overflow and previous < trig.hitTime + period < next):
+                                self.anubis_data[last+new_bcr].add_trigger(trig)
+                                triggers.remove(trig)
+                            else:
+                                break
+                    print("Rerranged")
+                    print(triggers)
+                    self.printBCR(last,last+prob_bcr_count)
+                    print("Rerranged")
                     now_bcr.error = False
                     bad_stage = False
                     #print(self.anubis_data[last-4:current+4])
@@ -140,8 +156,8 @@ class AtlasAnalyser():
                     print("Events added:", prob_bcr_count-obs_bcr_count)
                     self.printBCR(current,current+5)
                     current += prob_bcr_count-obs_bcr_count
-                    
                 else:
+                    triggers += now_bcr.triggers
                     if current - last > 9:
                         print("Give up")
                         bad_stage = False

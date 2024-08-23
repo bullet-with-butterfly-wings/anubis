@@ -55,15 +55,15 @@ class fileReader():
 
     def skip_events(self, count):
         init = count
-        with tqdm(total=count, desc="Skipping Events", unit='Events') as pbar:
-            while count > 0:
-                if not self.readBlock():
-                    print("Bad Block Read")
-                    break
-                if(self.hasEvents()):
-                    count -= len(self.evtBuilder.events)
-                    pbar.update(len(self.evtBuilder.events))
-                    self.evtBuilder.events.clear()
+        #with tqdm(total=count, desc="Skipping Events", unit='Events') as pbar:
+        while count > 0:
+            if not self.readBlock():
+                print("Bad Block Read")
+                break
+            if(self.hasEvents()):
+                count -= len(self.evtBuilder.events)
+        #           pbar.update(len(self.evtBuilder.events))
+                self.evtBuilder.events.clear()
         self.reload_event_builder()
         return init-count
         

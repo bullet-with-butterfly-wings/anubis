@@ -31,7 +31,9 @@ def FindCoincidentHits(etaHits, phiHits, time_window, tof_correction = True, slo
     event_sorted = sorted(channels, key=lambda rpcHit: (rpcHit.event_num, rpcHit.time))
     grouped_and_sorted = {key: list(group) 
                           for key, group in groupby(event_sorted, lambda rpcHit: rpcHit.event_num)}
-    
+    #print("Grouped")
+    #p
+    #rint(grouped_and_sorted)
     coincident_hits = []
 
     for event_num, hits in grouped_and_sorted.items():
@@ -48,28 +50,28 @@ def FindCoincidentHits(etaHits, phiHits, time_window, tof_correction = True, slo
             else:
                 correction = 0
             
-            if abs(hits[i+1].time - hits[i].time - correction) <= time_window: 
+            if abs(hits[i+1].time - hits[i].time - correction) <= time_window: #can it be out of order due to the correction?
                 temp_hits.append(hits[i])
                 temp_hits.append(hits[i+1])
             #I think this is wrong?? It can be both phi, 
             # Does not represent quality Better??
-
-            if temp_hits:
-                unique_hits = { (hit.channel, hit.time, hit.eta, hit.event_num, hit.rpc): hit for hit in temp_hits }.values()
-                eta_hits = [hit for hit in unique_hits if hit.eta]
-                if eta_hits:
-                    time_bin = min(hit.time for hit in eta_hits) 
-                    #highly speculative
-                else:
-                    time_bin = 1 #again
-            
-                coincident_hits.append([
-                    event_num,
-                    time_bin,
-                    [[hit.rpc, hit.channel, hit.time, hit.eta] for hit in unique_hits]
-                ])
-
-
+        #shift
+        if temp_hits:
+            unique_hits = { (hit.channel, hit.time, hit.eta, hit.event_num, hit.rpc): hit for hit in temp_hits }.values()
+            eta_hits = [hit for hit in unique_hits if hit.eta]
+            if eta_hits:
+                time_bin = min(hit.time for hit in eta_hits) 
+                #highly speculative
+            else:
+                time_bin = 1 #again
+        
+            coincident_hits.append([
+                event_num,
+                time_bin,
+                [[hit.rpc, hit.channel, hit.time, hit.eta] for hit in unique_hits]
+            ])
+    #print("Coin")
+    #print(coincident_hits)
     return coincident_hits
 
 
