@@ -30,7 +30,7 @@ class BCR():
     def __init__(self, hitTime, event_time, bcr_count, error = False):
         self.hitTime = hitTime
         self.event_time = event_time
-        self.timeStamp = datetime.datetime.timestamp(event_time)+bcr_count*89100/10**9
+        self.timeStamp = datetime.datetime.timestamp(event_time) #+bcr_count*89100/10**9
         self.bcr_count = bcr_count #Do I needed??
         self.cycle = 0
         self.triggers = []
@@ -110,19 +110,19 @@ class AtlasAnalyser():
             now_bcr.cycle = cycle
 
             if now_bcr.error and not bad_stage:
-                print("Bad stage started:", current)
+                #print("Bad stage started:", current)
                 bad_stage = True
                 last = current - 1
                 triggers = [] #handle triggers later
             good_bcr = self.anubis_data[last]
             
             if bad_stage:
-                print("In bad stage:", current)
-                print(now_bcr)
+                #print("In bad stage:", current)
+                #print(now_bcr)
                 delta = now_bcr.hitTime - good_bcr.hitTime
                 if delta < 0:
                     delta += period
-                print("Delta:", delta)
+                #print("Delta:", delta)
                 if  delta % interval < 50 or interval - (delta % interval) < 50: #no overflow
                     prob_bcr_count  = round(delta / interval)
                     obs_bcr_count = current - last
@@ -143,28 +143,27 @@ class AtlasAnalyser():
                                 triggers.remove(trig)
                             else:
                                 break
-                    print("Rerranged")
-                    print(triggers)
-                    self.printBCR(last,last+prob_bcr_count)
-                    print("Rerranged")
+                    #print("Rerranged")
+                    #print(triggers)
+                    #self.printBCR(last,last+prob_bcr_count)
+                    #print("Rerranged")
                     now_bcr.error = False
                     bad_stage = False
                     #print(self.anubis_data[last-4:current+4])
 
                     #bcr_number += prob_bcr_count-obs_bcr_count+1
-                    print("Sorted:", current)
-                    print("Events added:", prob_bcr_count-obs_bcr_count)
-                    self.printBCR(current,current+5)
+                    #print("Sorted:", current)
+                    #print("Events added:", prob_bcr_count-obs_bcr_count)
                     current += prob_bcr_count-obs_bcr_count
                 else:
                     triggers += now_bcr.triggers
                     if current - last > 9:
-                        print("Give up")
+                        #print("Give up")
                         bad_stage = False
                         self.anubis_data[current+1].error = False
 
                 if not now_bcr.error and bad_stage:
-                    print("Fixed")
+                    #print("Fixed")
                     bad_stage = False
 
             current += 1
@@ -310,4 +309,22 @@ class AtlasAnalyser():
                 atlas_pointer += 1 
         return matches
     
+    def pairBCRwithEvents(self):
+        anubis_pointer = 0
+        atlas_pointer = 0
+        matches = []
+        for atlas_pointer in range(len(self.atlas_data)):
+            hit_time = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
+            matches.append([self.atlas_data.iloc[atlas_pointer],[]])
+            for bcr in self.anubis_data[anubis_pointer:]:
+                if bcr.timeStamp < 1000e-6 + hit_time:
+                    anubis_pointer = self.anubis_data.index(bcr)
+                if abs(bcr.timeStamp - hit_time) < 1000e-6:
+                    for trigger in bcr.triggers:
+                        if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 10:
+                            matches[atlas_pointer][1].append(trigger)
 
+                if bcr.timeStamp > hit_time + 1000e-6:
+                    break
+
+        return matches
