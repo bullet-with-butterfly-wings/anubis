@@ -321,7 +321,7 @@ class AtlasAnalyser():
                     anubis_pointer = self.anubis_data.index(bcr)
                 if abs(bcr.timeStamp - hit_time) < 1000e-6:
                     for trigger in bcr.triggers:
-                        if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 10:
+                        if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
                             matches[atlas_pointer][1].append(trigger)
 
                 if bcr.timeStamp > hit_time + 1000e-6:

@@ -696,18 +696,7 @@ def find_tdc_event_count(event_chunk):
         event_number.append(tot_length)
     return event_number
 
-def abs_badVsgood_hits(event_chunk):
-    event_number = [[0,0] for tdc in range(5)] #(good, bad)
-    for tdc in range(5):
-        tot_length = 0
-        for event in event_chunk:
-            for hit in event.tdcEvents[tdc].words:
-                time = (hit & 0xfffff) #*(25/32)
-                if time < 300:
-                    event_number[tdc][0] += 1
-                else:
-                    event_number[tdc][1] += 1
-    return event_number
+
 
 
 def compile_and_plot_tof(dTs, rpc_indicies=[[0,1], [0,2], [0,3], [0,4], [0,5]], pdf_filename = "Data_output/compiled_tof_plots.pdf"):
