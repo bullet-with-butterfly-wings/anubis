@@ -24,9 +24,9 @@ def FindCoincidentHits(etaHits, phiHits, time_window, tof_correction = True, slo
     channels = []
 
     for RPC in range(6):
-        channels += [hit for hit in etaHits[RPC] if 150 <= hit.time <= 300 and hit.channel != 0]
+        channels += [hit for hit in etaHits[RPC] if 150 <= hit.time <= 350 and hit.channel != 0]
         
-        channels += [hit for hit in phiHits[RPC] if 150 <= hit.time <= 300 and hit.channel != 0]
+        channels += [hit for hit in phiHits[RPC] if 150 <= hit.time <= 350 and hit.channel != 0]
         
     event_sorted = sorted(channels, key=lambda rpcHit: (rpcHit.event_num, rpcHit.time))
     grouped_and_sorted = {key: list(group) 

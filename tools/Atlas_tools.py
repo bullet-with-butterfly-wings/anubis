@@ -10,6 +10,7 @@ import hist as hi
 import datetime
 import importlib
 import uproot
+from tqdm import tqdm
 import pandas
 import pickle
 
@@ -231,6 +232,8 @@ class AtlasAnalyser():
                     tdc5Reads = self.fReader.getTDCFiveEvents()
                     if not tdc5Reads:
                         continue
+                else:
+                    continue
             else:
                 tdc5Reads = tdc5Events[i]
 
@@ -313,18 +316,24 @@ class AtlasAnalyser():
         anubis_pointer = 0
         atlas_pointer = 0
         matches = []
-        for atlas_pointer in range(len(self.atlas_data)):
-            hit_time = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
-            matches.append([self.atlas_data.iloc[atlas_pointer],[]])
-            for bcr in self.anubis_data[anubis_pointer:]:
-                if bcr.timeStamp < 1000e-6 + hit_time:
-                    anubis_pointer = self.anubis_data.index(bcr)
-                if abs(bcr.timeStamp - hit_time) < 1000e-6:
-                    for trigger in bcr.triggers:
-                        if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
+        with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
+            for atlas_pointer in range(len(self.atlas_data)):
+                hit_time = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
+                matches.append([self.atlas_data.iloc[atlas_pointer],[]])
+                for bcr in self.anubis_data[anubis_pointer:]:
+                    if bcr.timeStamp < 1000e-6 + hit_time:
+                        anubis_pointer = self.anubis_data.index(bcr)
+                    if abs(bcr.timeStamp - hit_time) < 1000e-6:
+                        for trigger in bcr.triggers:
+                            #if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
                             matches[atlas_pointer][1].append(trigger)
 
-                if bcr.timeStamp > hit_time + 1000e-6:
-                    break
-
+                    if bcr.timeStamp > hit_time + 1000e-6:
+                        break
+                pbar.update(1)
         return matches
+    
+def plotBCRHistogram(anubis_data):
+    bcrs = [bcr.hitTime for bcr in anubis_data]
+    plt.hist(bcrs, bins = 100)
+    plt.show()

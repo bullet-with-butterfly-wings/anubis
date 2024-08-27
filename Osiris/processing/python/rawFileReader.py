@@ -164,7 +164,7 @@ class fileReader():
                     for hit in times_words:
                         if recordtimes:
                             TDC_error_time[tdc].append([hit, i])
-                        if hit[0] <= 300:
+                        if 150 < hit[0] <= 370:
                             good_time_count += 1                                                
                         else:
                             print(hit[0])
