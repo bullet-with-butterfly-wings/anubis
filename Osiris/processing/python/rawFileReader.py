@@ -89,6 +89,7 @@ class fileReader():
         self.check_alignment_status(aligned, realigned) 
         self.update_adjustment_window(realigned)
         self.tdc_monitoring_event_buffer.extend(evts_chunk)
+        self.global_alignment = True
         if self.tdc_monitoring_counter >= 2500:
             #print(self.tdc_monitoring_counter)
             TDC_error_time, tdc_mets = self.monitor_tdc_state(recordtimes=True, only_min=False)
@@ -156,7 +157,6 @@ class fileReader():
             for i, event in enumerate(self.tdc_monitoring_event_buffer[-(2500):]):
                 words = event.tdcEvents[tdc].words
                 times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in bad_channels[tdc]]
-                print(times_words)
                 if times_words:
                     min_time, min_word = min(times_words, key=lambda x: x[0])
                     if only_min:
@@ -167,7 +167,6 @@ class fileReader():
                         if 150 < hit[0] <= 370:
                             good_time_count += 1                                                
                         else:
-                            print(hit[0])
                             if only_min:
                                 event.tdcEvents[tdc].qual = 0x10 #raising flag
                             poor_time_count += 1
@@ -223,8 +222,7 @@ class fileReader():
            return False
        tdcReadData = self.data.read(nWords*self.wordSize)
        self.bytesRead = self.bytesRead+self.wordSize*(nWords+3)
-       if thisTDC < 5:
-           self.evtBuilder.addTDCRead(thisTDC, thisTime, tdcReadData, p)
+       self.evtBuilder.addTDCRead(thisTDC, thisTime, tdcReadData, p)
        return True
    
     def reload_event_builder(self):

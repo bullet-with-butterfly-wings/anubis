@@ -222,28 +222,28 @@ class AtlasAnalyser():
                 print("New")
                 self.fReader = rawFileReader.fileReader(file)
                 self.anubis_file = file
-               
-        while i < amount_of_events:
-            if not fromPKL:
-                if not self.fReader.readBlock():
-                    print("Finished Reading File")
-                    return
-                if(self.fReader.hasEvents()):
-                    tdc5Reads = self.fReader.getTDCFiveEvents()
-                    if not tdc5Reads:
+        with tqdm(total=amount_of_events, desc=f"Reading", unit='Events') as pbar: 
+            while i < amount_of_events:
+                if not fromPKL:
+                    if not self.fReader.readBlock():
+                        print("Finished Reading File")
+                        return
+                    if(self.fReader.hasEvents()):
+                        tdc5Reads = self.fReader.getTDCFiveEvents()
+                        if not tdc5Reads:
+                            continue
+                    else:
                         continue
                 else:
+                    tdc5Reads = tdc5Events[i]
+
+                i += 1
+                if i == 1:
+                    previous_event_time = tdc5Reads[0][0]
+                    previous_last_bcr = 620958 #the ambiguity
                     continue
-            else:
-                tdc5Reads = tdc5Events[i]
-
-            i += 1
-            if i == 1:
-                previous_event_time = tdc5Reads[0][0]
-                previous_last_bcr = 620958 #the ambiguity
-                continue
-
-            previous_event_time, previous_last_bcr = self._readingRoutine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time, previous_last_bcr)
+                previous_event_time, previous_last_bcr = self._readingRoutine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time, previous_last_bcr)
+                pbar.update(1)
             #print(previous_event_time)
         return self.anubis_data
 
@@ -259,81 +259,47 @@ class AtlasAnalyser():
         return self.atlas_data
     
 
-    def pairBcIdWithAtlasHit(self):
-        anubis_pointer = 0 #index of already checked data
-        atlas_pointer = 0
-        # you will need to align them before the run
-        triggers = list(np.concatenate(np.asarray([bcr.triggers for bcr in self.anubis_data], dtype="object")))
-        triggers.sort(key = lambda x: x.timeStamp)
-        triggers = triggers[330_000:]
-        window = 20_000e-9 # in ns on both sides
-        dev = 5 #in bcId
-        potential = []
-        new_potential = []
-        while anubis_pointer < len(triggers) and atlas_pointer < len(self.atlas_data["TimeStamp"]):
-            atlas_hit = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
-            if atlas_hit - window < triggers[anubis_pointer].timeStamp < atlas_hit + window:
-                print("In window")
-                print("Trigger:", triggers[anubis_pointer])
-                print("Atlas:", self.atlas_data.iloc[atlas_pointer])
-                #print("Anubis:", triggers[anubis_pointer].bcID)
-                #if abs(triggers[anubis_pointer].bcID-self.atlas_data.iloc[atlas_pointer]["BCID"]) < dev:
-                #    print("Same BCID")
-                anubis_pointer += 1
-            elif atlas_hit + window < triggers[anubis_pointer].timeStamp:
-                print("Atlas increase:", (atlas_hit, triggers[anubis_pointer].timeStamp))
-                atlas_pointer += 1
-                potential.append(new_potential)
-                new_potential = []
-            elif atlas_hit - window > triggers[anubis_pointer].timeStamp:
-                print("Anubis increase:",(atlas_hit, triggers[anubis_pointer].timeStamp))
-                anubis_pointer += 1
-        return potential
-                    
-    def pairBcIdInConstruction(self):
-        anubis_pointer = 0 #index of already checked data
-        atlas_pointer = 0
-        # you will need to align them before the run
-        triggers = list(np.concatenate(np.asarray([bcr.triggers for bcr in self.anubis_data], dtype="object")))
-        triggers.sort(key = lambda x: x.timeStamp)
-        triggers = triggers[330_000:]
-        matches = []
-        current_min = 1
-        while anubis_pointer < len(triggers) and atlas_pointer < len(self.atlas_data["TimeStamp"]):
-            atlas_hit = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
-            if 0 < atlas_hit - triggers[anubis_pointer].timeStamp:
-                current_min = min(current_min, atlas_hit - triggers[anubis_pointer].timeStamp)
-                anubis_pointer += 1
-            elif atlas_hit - triggers[anubis_pointer].timeStamp < 0:
-                #print("Overshoot")
-                current_min = min(current_min, abs(atlas_hit - triggers[anubis_pointer].timeStamp))
-                matches.append((self.atlas_data.iloc[atlas_pointer], triggers[anubis_pointer], current_min))
-                current_min = 1
-                atlas_pointer += 1 
-        return matches
-    
     def pairBCRwithEvents(self):
         anubis_pointer = 0
         atlas_pointer = 0
-        matches = []
+        self.matches = []
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):
                 hit_time = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
-                matches.append([self.atlas_data.iloc[atlas_pointer],[]])
+                self.matches.append([self.atlas_data.iloc[atlas_pointer],[]])
                 for bcr in self.anubis_data[anubis_pointer:]:
-                    if bcr.timeStamp < 1000e-6 + hit_time:
+                    if bcr.timeStamp < hit_time - 1000e-6:
                         anubis_pointer = self.anubis_data.index(bcr)
                     if abs(bcr.timeStamp - hit_time) < 1000e-6:
                         for trigger in bcr.triggers:
                             #if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
-                            matches[atlas_pointer][1].append(trigger)
-
+                            self.matches[atlas_pointer][1].append(trigger)
                     if bcr.timeStamp > hit_time + 1000e-6:
                         break
                 pbar.update(1)
-        return matches
+        return self.matches
     
-def plotBCRHistogram(anubis_data):
-    bcrs = [bcr.hitTime for bcr in anubis_data]
-    plt.hist(bcrs, bins = 100)
+def plotBCRHistogram(data, atlas = False):
+    bins = [i for i in range(1,3564)]
+    if atlas:
+        data = data["BCID"]
+        data, _ = np.histogram(data, bins=bins)
+        bins = bins[:-1]
+        plt.step(bins, data)
+    else:
+        counts = [0 for bcId in range(1,3564)]
+        problems = 0
+        for bcr in data:
+            for trigger in bcr.triggers:
+                if trigger.bcId > 3564:
+                    problems += 1
+                else:
+                    counts[round(trigger.bcId)-1] += 1
+        print(problems)
+        plt.plot(bins, counts)
+    
+    plt.xlabel('Time since last BCR (ns)')
+    plt.ylabel('Frequency')
+    plt.title('Histogram of BCID')
     plt.show()
+    

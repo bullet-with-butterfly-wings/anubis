@@ -336,7 +336,7 @@ class Timing_Analyser():
                 minEtaHit = rpcHit(-1,1000,True, self.processed_event, rpc)
                 minPhiHit = rpcHit(-1,1000,False, self.processed_event, rpc)
                 for hit in Hits[rpc]:
-                    if hit.time>150 and hit.time<300:
+                    if hit.time>150 and hit.time<350:
                         if hit.eta and hit.time<minEtaHit.time:
                             minEtaHit = hit
                         elif hit.time<minPhiHit.time and not hit.eta:
