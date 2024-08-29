@@ -139,6 +139,8 @@ class eventBuilder():
                        
         #Now store the tdc events from the new read into the full buffer, and check whether we can pull out any complete proANUBIS events
         for event in thisRead:
+            if len(event.words)==0:
+                event.qual = 0xf
             self.tdcEventBuffer[thisTDC].append(event)
         self.buildFullEvents()
         thisRead = []

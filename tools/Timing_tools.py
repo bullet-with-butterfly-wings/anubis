@@ -289,7 +289,7 @@ def plot_tdc_error_channels_custom_ranges(TDC_error_time, ranges, tdcs_to_plot=N
                         event_count += 2500
                     if range_start <= process+event_count < range_end:
                         channel = (hit_word >> 24) & 0x7f
-                        if 300 > hit_time > 100:
+                        if 350 > hit_time > 150:
                             good_channels[channel] += 1
                         else:
                             bad_channels[channel] += 1

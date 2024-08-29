@@ -17,7 +17,6 @@ def readTimeStamp(tsData):
 class fileReader():
     def __init__(self,filename,activeTDCs=[tdc for tdc in range(5)]):
         self.fname = filename
-        importlib.reload(rawEventBuilder)
         self.evtBuilder = rawEventBuilder.eventBuilder(activeTDCs=activeTDCs)
         self.wordSize = 4
         self.data = open(self.fname,'rb')
@@ -89,12 +88,13 @@ class fileReader():
         self.check_alignment_status(aligned, realigned) 
         self.update_adjustment_window(realigned)
         self.tdc_monitoring_event_buffer.extend(evts_chunk)
-        self.global_alignment = True
+        self.global_alignment = True #not originally
         if self.tdc_monitoring_counter >= 2500:
             #print(self.tdc_monitoring_counter)
             TDC_error_time, tdc_mets = self.monitor_tdc_state(recordtimes=True, only_min=False)
             self.tdc_monitoring_event_buffer.clear()
             self.tdc_monitoring_counter = 0
+
         if extract_tdc_mets:
             return evts_chunk, tdc_mets, TDC_error_time
         elif self.global_alignment == True and not extract_tdc_mets:
@@ -160,7 +160,7 @@ class fileReader():
                 if times_words:
                     min_time, min_word = min(times_words, key=lambda x: x[0])
                     if only_min:
-                        times_words = [min(times_words, key=lambda x: x[0])]
+                        times_words = [(min_time, min_word)]
                     for hit in times_words:
                         if recordtimes:
                             TDC_error_time[tdc].append([hit, i])
@@ -226,6 +226,5 @@ class fileReader():
        return True
    
     def reload_event_builder(self):
-        importlib.reload(rawEventBuilder)
         self.evtBuilder = rawEventBuilder.eventBuilder()
         return self.evtBuilder.tdcEventBuffer

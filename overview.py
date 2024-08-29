@@ -32,8 +32,8 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
     last_reset = 0
     time = []
     chunks = []
-    tdc_mets = [[] for tdc in range(5)]
-    Tot_TDC_info = [[] for tdc in range(5)]
+    #tdc_mets = [[] for tdc in range(5)]
+    #Tot_TDC_info = [[] for tdc in range(5)]
 
     initial_chunk = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = False)
     initial_time = max([initial_chunk[0].tdcEvents[tdc].time for tdc in range(5) if initial_chunk[0].tdcEvents[tdc].time])
@@ -66,6 +66,7 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
     else:
         total_limit = max_process_event
         unit = 'Chunks'
+        
     running = True
     with tqdm(total=total_limit, desc=f"Processing Chunks {file_name}", unit=unit) as pbar:
             while running:
@@ -87,8 +88,8 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
                     last_reset = event_time
                     originTime = event_time
                     
-                [tdc_mets[i].append(tdc_met[i]) for i in range(5) if tdc_met[i] != 0]
-                [Tot_TDC_info[i].extend(TDC_info[i]) for i in range(5) if TDC_info[i]]
+                #[tdc_mets[i].append(tdc_met[i]) for i in range(5) if tdc_met[i] != 0]
+                #[Tot_TDC_info[i].extend(TDC_info[i]) for i in range(5) if TDC_info[i]]
                 time.append((event_time-originTime).total_seconds())
                 chunks.append(event_chunk)
                 pbar.update(1)
@@ -98,7 +99,7 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
                     running = processedEvents < max_process_event_chunk
     pbar.close()
     print("Ending time:" , event_time)
-    return chunks, time, tdc_mets, Tot_TDC_info, fReader
+    return chunks, time, fReader
 
 def alignment(chunks, times = None, pdf = None):
     mets = [[] for tdc in range(5)]
@@ -164,7 +165,7 @@ def bvg(mets, times = None, pdf = None):
     print("BVG Done")
     plt.close()
 
-def noiseTime(mets, time = None):
+def noise_time(mets, time = None):
     for idx, alg in enumerate(mets):
         for chunk_number, alignment_metric in enumerate(alg):
             if alignment_metric > 40:
@@ -175,7 +176,7 @@ def noiseTime(mets, time = None):
     print("No noise found")
     return None
 
-def timeVsChunks(times, pdf = None):
+def time_vs_chunks(times, pdf = None):
     plt.figure(figsize=(10, 6))
     plt.plot(times, [i for i in range(len(times))], label="Time between events")
     plt.xlabel("Time (s)")
@@ -188,21 +189,36 @@ def timeVsChunks(times, pdf = None):
     plt.close()
     print("Time vs Chunk Done")
 
-def absBvgHits(chunks, times = None,  pdf = None):
-    hit_counts = [[[],[]] for tdc in range(5)] #(good, bad)
+def abs_bvg_hits(chunks, times = None,  pdf = None, per_rpc = False): #actually better
+    if per_rpc:
+        hit_counts = [[[],[]] for rpc in range(6)] #(good, bad)
+    else:
+        hit_counts = [[[],[]] for tdc in range(5)] #(good, bad)
+
     for event_chunk in chunks:
+        if per_rpc:
+            temp = [[0,0] for rpc in range(6)]
+        else:
+            temp = [[0,0] for tdc in range(5)]
         for tdc in range(5):
-            bad = 0
-            good = 0
             for event in event_chunk:
                 for hit in event.tdcEvents[tdc].words:
                     time = (hit & 0xfffff) #*(25/32)
-                    if 150 < time < 370:
-                        good += 1
+                    if per_rpc:
+                        rpc, _ = ATools.tdcChanToRPCHit(hit, tdc, 0)
+                        if 150 < time < 370:
+                            temp[rpc][0] += 1
+                        else:
+                            temp[rpc][1] += 1 
                     else:
-                        bad += 1
-            hit_counts[tdc][0].append(good)
-            hit_counts[tdc][1].append(bad)
+                        if 150 < time < 370:
+                            temp[tdc][0] += 1
+                        else:
+                            temp[tdc][1] += 1 
+
+        for i, (good, bad) in enumerate(temp):
+            hit_counts[i][0].append(good)
+            hit_counts[i][1].append(bad)
     
     fig, ax = plt.subplots(figsize=(10, 8))
     if times:
@@ -212,9 +228,14 @@ def absBvgHits(chunks, times = None,  pdf = None):
         binsx = [x*interval for x in range(len(hit_counts[0][0]))]
         ax.set_xlabel('Processed Events')
     
-    for tdc in range(5):
-        ax.plot(binsx, hit_counts[tdc][0], label=f'TDC{tdc} good')
-        ax.plot(binsx, hit_counts[tdc][1], label=f'TDC{tdc} bad')
+    if per_rpc:
+        for rpc in range(6):
+            ax.plot(binsx, hit_counts[rpc][0], label=f'RPC{rpc} in-peak')
+            ax.plot(binsx, hit_counts[rpc][1], label=f'RPC{rpc} off-peak')
+    else:
+        for tdc in range(5):
+            ax.plot(binsx, hit_counts[tdc][0], label=f'TDC{tdc} in-peak')
+            ax.plot(binsx, hit_counts[tdc][1], label=f'TDC{tdc} off-peak')
     ax.set_title('Hit counts')
     ax.set_ylabel('Absolute hit count in chunk')
     ax.legend()
@@ -224,6 +245,7 @@ def absBvgHits(chunks, times = None,  pdf = None):
         plt.show()
     plt.close()
     print("Absolute BVG Done")
+    return hit_counts
 
 def efficiency(chunks, residual = False, pdf = None):
     TAnalyser = proAnubis_Analysis_Tools.Timing_Analyser(chunks[0], 0)
@@ -249,11 +271,13 @@ def efficiency(chunks, residual = False, pdf = None):
             #print("Clust")
             reconstructor.reconstruct_and_extrapolate(cluster)
     plt.figure(figsize=(10, 6))
+    max_eff = []
     for RPC in range(6):
         if reconstructor.possible_reconstructions[RPC] == 0:
             efficiency = [0 for x in reconstructor.successful_reconstructions[RPC]]
         else:
             efficiency = [x / reconstructor.possible_reconstructions[RPC] for x in reconstructor.successful_reconstructions[RPC]]
+        max_eff.append(efficiency[-1])
         plt.plot(reconstructor.tol, efficiency, label=f'RPC {RPC}')
 
     plt.xlabel('Tolerance')
@@ -268,8 +292,9 @@ def efficiency(chunks, residual = False, pdf = None):
     plt.close()
     print("Efficiency Done")
     print("Possible reconstructions", reconstructor.possible_reconstructions)
+    return max_eff
 
-def hitTimeHist(TDC_error_time, ranges = None, pdf = None):
+def hit_time_hist(TDC_error_time, ranges = None, pdf = None):
     colors = ['blue', 'green', 'red', 'purple', 'orange']
     bins = list(range(0, 1251, 50)) + [float('inf')]
     text_offset_base = 0.1
@@ -314,7 +339,7 @@ def hitTimeHist(TDC_error_time, ranges = None, pdf = None):
     print("Hit Time Histogram Done")
     plt.close()
 
-def hitChannelHist(TDC_error_time, ranges = None, tdcs_to_plot=None, pdf=None):
+def hit_channel_hist(TDC_error_time, ranges = None, tdcs_to_plot=None, pdf=None):
     if not ranges:
         ranges = [(0, len(TDC_error_time[0]))]
     
@@ -378,3 +403,83 @@ def hitChannelHist(TDC_error_time, ranges = None, tdcs_to_plot=None, pdf=None):
         pdf.savefig()  # Save the current figure to the PDF
         plt.close()
         print("Hit Channel Histogram Done")
+
+def possible_alignment():
+        pass
+        """
+        for i, (tdc1, tdc2) in enumerate(order):
+            mets[i].append(VTools.metric_possible(event_chunk, tdc1, tdc2)[0])
+        """
+def tdc_monitoring(chunks, only_min = False, recordtimes = True):
+    tdc_mets = [0 for tdc in range(5)]
+    TDC_error_time = [[] for tdc in range(5)] 
+    bad_channels = [[32],[0,96],[64],[31,32],[0,1,2,3]]
+    for tdc in range(5):
+        poor_time_count = 0
+        good_time_count = 0
+        for i, event in enumerate(chunks):
+            words = event.tdcEvents[tdc].words
+            times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in bad_channels[tdc]]
+            if times_words:
+                min_time, min_word = min(times_words, key=lambda x: x[0])
+                if only_min:
+                    times_words = [(min_time, min_word)]
+                for hit in times_words:
+                    if recordtimes:
+                        TDC_error_time[tdc].append([hit, i])
+                    if 150 < hit[0] <= 370:
+                        good_time_count += 1                                                
+                    else:
+                        if only_min:
+                            event.tdcEvents[tdc].qual = 0x10 #raising flag
+                        poor_time_count += 1
+
+        if good_time_count == 0:
+            return None
+        else:
+            ratio = poor_time_count / good_time_count
+            tdc_mets[tdc].append(ratio)
+
+    return TDC_error_time, tdc_mets
+    
+def cluster_size(chunks, residual = False):
+    histograms = [[] for rpc in range(6)]
+    TAnalyser = proAnubis_Analysis_Tools.Timing_Analyser(chunks[0], 0)
+    if residual:
+        for processedEvents, event_chunk in enumerate(chunks[1:]):
+            TAnalyser.update_event(event_chunk, processedEvents)
+            TAnalyser.readTDCTimeDiffs()
+        
+        residEta, residPhi = TAnalyser.Calculate_Residual_and_plot_TDC_Time_Diffs( 
+                                                     pdf_filename='output/TDC_time_diffs.pdf', 
+                                                     max_itr = 5)
+        
+    reconstructor = proAnubis_Analysis_Tools.Reconstructor(chunks[0], 0)
+    for processedEvents, event_chunk in enumerate(chunks[1:]):
+
+            reconstructor.update_event(event_chunk, processedEvents)
+            # populate_hits turns TDC bit wise information into their corresponding strips
+            reconstructor.populate_hits()
+            # This is optionnal, and requires the residual of eta and phi
+            if residual:
+                reconstructor.apply_systematic_correction(residEta, residPhi)
+            # make_cluster does temporal and spatial coincidence between the stips, and reconstruction is done
+            clusters = reconstructor.make_cluster()
+            for evt in clusters:
+                    for rpc in range(6):
+                        if len(evt[2][rpc][0]) and len(evt[2][rpc][0]) < 30:
+                            histograms[rpc].append(len(evt[2][rpc][0]))
+                        if len(evt[2][rpc][1]) and len(evt[2][rpc][1]) < 30:
+                            histograms[rpc].append(len(evt[2][rpc][1]))
+            #print("Clust")
+    histograms = np.array(histograms, dtype=object)
+    avg_cluster_size = [np.mean(rpc_clusters) for rpc_clusters in histograms]
+    errors = []
+    for rpc_clusters in histograms:
+        if rpc_clusters:
+            errors.append(np.std(rpc_clusters)/np.sqrt(len(rpc_clusters)))
+        else:
+            errors.append(100)
+    #over the whole population
+    print("Cluster Size Done")
+    return avg_cluster_size, errors, histograms

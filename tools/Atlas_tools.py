@@ -262,44 +262,47 @@ class AtlasAnalyser():
     def pairBCRwithEvents(self):
         anubis_pointer = 0
         atlas_pointer = 0
+        time_window = 90e-6
         self.matches = []
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):
                 hit_time = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
                 self.matches.append([self.atlas_data.iloc[atlas_pointer],[]])
+
                 for bcr in self.anubis_data[anubis_pointer:]:
-                    if bcr.timeStamp < hit_time - 1000e-6:
+                    if bcr.timeStamp < hit_time - time_window:
                         anubis_pointer = self.anubis_data.index(bcr)
-                    if abs(bcr.timeStamp - hit_time) < 1000e-6:
+                    if abs(bcr.timeStamp - hit_time) < time_window:
                         for trigger in bcr.triggers:
                             #if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
                             self.matches[atlas_pointer][1].append(trigger)
-                    if bcr.timeStamp > hit_time + 1000e-6:
+                    if bcr.timeStamp > hit_time + time_window:
                         break
                 pbar.update(1)
         return self.matches
     
-def plotBCRHistogram(data, atlas = False):
-    bins = [i for i in range(1,3564)]
+def BCRHistogram(data, atlas = False, plot = True):
     if atlas:
-        data = data["BCID"]
-        data, _ = np.histogram(data, bins=bins)
-        bins = bins[:-1]
-        plt.step(bins, data)
+        hist = data["BCID"]
     else:
-        counts = [0 for bcId in range(1,3564)]
+        hist = []
         problems = 0
         for bcr in data:
             for trigger in bcr.triggers:
                 if trigger.bcId > 3564:
                     problems += 1
                 else:
-                    counts[round(trigger.bcId)-1] += 1
-        print(problems)
-        plt.plot(bins, counts)
-    
-    plt.xlabel('Time since last BCR (ns)')
-    plt.ylabel('Frequency')
-    plt.title('Histogram of BCID')
-    plt.show()
-    
+                    hist.append(round(trigger.bcId))
+        #strange number of problems ~ 8193
+    bins = [i for i in range(0,3565)]
+    counts, _ = np.histogram(hist, bins=bins, density=True)
+    if plot:
+        bins = bins[:-1]
+        plt.step(bins, counts)
+        
+        plt.xlabel('Time since last BCR (ns)')
+        plt.xlim(0, 3565)
+        plt.ylabel('Frequency')
+        plt.title(f'Histogram of BCID {"Atlas" if atlas else "Anubis"}')
+        plt.show()
+    return counts
