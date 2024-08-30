@@ -22,4 +22,5 @@ data/*
 images_video/*
 *.png
 *.mp4
+*.pkl
 *.pdf

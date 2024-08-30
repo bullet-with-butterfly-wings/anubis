@@ -55,6 +55,7 @@ def FindCoincidentHits(etaHits, phiHits, time_window, tof_correction = True, slo
                 temp_hits.append(hits[i+1])
             #I think this is wrong?? It can be both phi, 
             # Does not represent quality Better??
+            #also you can add stuff into the cluster which are not related, which I guess it is not bad
         #shift
         if temp_hits:
             unique_hits = { (hit.channel, hit.time, hit.eta, hit.event_num, hit.rpc): hit for hit in temp_hits }.values()

@@ -74,8 +74,7 @@ class fileReader():
         i = 0
         while i < interval:
             if not self.readBlock():
-                print("Bad Block Read")
-                break
+                raise EOFError("You have reached the end of the file")
             if(self.hasEvents()): #my part
                 for events in range(len(self.evtBuilder.events)):
                     new_events = self.evtBuilder.events.pop(0)

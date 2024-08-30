@@ -45,7 +45,12 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
             with tqdm(total=round((goal-event_time).total_seconds()), desc=f"Skipping Events {file_name}", unit='Events') as pbar:        
                 while event_time < datetime.strptime(start, '%Y-%m-%d %H:%M:%S'):
                     fReader.skip_events(2_000)
-                    chunk = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = False)
+                    try:
+                        chunk = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = False)
+                    except Exception as e:
+                        print(e)
+                        return chunks, time, fReader
+                        
                     if chunk:
                         event_time = max([chunk[0].tdcEvents[tdc].time for tdc in range(5) if chunk[0].tdcEvents[tdc].time])
                         pbar.update(round(event_time.timestamp()-pbar.n - initial_time.timestamp()))
@@ -74,7 +79,7 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
                 try:
                     event_chunk, tdc_met, TDC_info = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = True) # get the aligned events
                 except Exception as e:
-                    print("Exception:", e)
+                    print(e)
                     max_process_event_chunk = processedEvents
                     break
 
@@ -467,10 +472,15 @@ def cluster_size(chunks, residual = False):
             clusters = reconstructor.make_cluster()
             for evt in clusters:
                     for rpc in range(6):
-                        if len(evt[2][rpc][0]) and len(evt[2][rpc][0]) < 30:
-                            histograms[rpc].append(len(evt[2][rpc][0]))
-                        if len(evt[2][rpc][1]) and len(evt[2][rpc][1]) < 30:
-                            histograms[rpc].append(len(evt[2][rpc][1]))
+                        for phi_cluster in evt[2][rpc][0]:
+                            histograms[rpc].append(len(phi_cluster)) 
+                            if len(phi_cluster) > 100:
+                                print(phi_cluster)
+                        for eta_cluster in evt[2][rpc][1]:
+                            histograms[rpc].append(len(eta_cluster))
+                            if len(eta_cluster) > 100:
+                                print(eta_cluster)
+                            
             #print("Clust")
     histograms = np.array(histograms, dtype=object)
     avg_cluster_size = [np.mean(rpc_clusters) for rpc_clusters in histograms]
