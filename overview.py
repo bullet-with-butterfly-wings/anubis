@@ -2,6 +2,7 @@ import importlib
 import sys
 from tqdm import tqdm
 import  os
+import pickle
 import glob
 
 dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//" # insert your directory path
@@ -24,7 +25,7 @@ interval = 100 # Set your monitoring chunck size
 order = [[0,1], [1,2], [2,3], [3,4]] # Order what you want to align
 
 
-def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = None, end = None):
+def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = None, end = None, tdc5 = False):
     if not fReader:
         fReader = rawFileReader.fileReader(dir_path+"data//"+file_name) # load in the classs object    
     processedEvents = 0 # Initialisation
@@ -33,11 +34,12 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
     time = []
     chunks = []
     #tdc_mets = [[] for tdc in range(5)]
-    #Tot_TDC_info = [[] for tdc in range(5)]
-
+    #Tot_TDC_info = [[] for tdc in range(5)]#
     initial_chunk = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = False)
     initial_time = max([initial_chunk[0].tdcEvents[tdc].time for tdc in range(5) if initial_chunk[0].tdcEvents[tdc].time])
-    print("Initial time", initial_time)          
+    print("Initial time", initial_time, datetime.timestamp(initial_time))
+    print("Start:", datetime.timestamp(datetime.strptime(start, '%Y-%m-%d %H:%M:%S')))
+    print("Bigger than start:", 1719503720 > datetime.timestamp(initial_time))          
     if start:#if it is string, its a date
         if type(start) == str:
             goal = datetime.strptime(start, '%Y-%m-%d %H:%M:%S')
@@ -73,6 +75,10 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
         unit = 'Chunks'
         
     running = True
+    if tdc5:
+        fReader.evtBuilder.tdcFiveBuffer = []
+        data = []
+    counter = 0
     with tqdm(total=total_limit, desc=f"Processing Chunks {file_name}", unit=unit) as pbar:
             while running:
                 processedEvents += 1
@@ -97,13 +103,31 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
                 #[Tot_TDC_info[i].extend(TDC_info[i]) for i in range(5) if TDC_info[i]]
                 time.append((event_time-originTime).total_seconds())
                 chunks.append(event_chunk)
-                pbar.update(1)
+                counter += 1
+                if tdc5:
+                    tdc5_events = fReader.getTDCFiveEvents()
+                    data.append([event_chunk, tdc5_events])
+
+                if counter % 5_000 == 0:
+                    print("Event time:", event_time)
+                    storage = "try.pkl"
+                    with open(storage, "wb") as f:
+                        pickle.dump(data, f)
+                    print("Saved")
+
+               
+                if end:
+                    pbar.update(round((event_time - datetime.strptime(start, '%Y-%m-%d %H:%M:%S')).total_seconds() - pbar.n, 2))
+                else:     
+                    pbar.update(1)
                 if end:
                     running = event_time < datetime.strptime(end, '%Y-%m-%d %H:%M:%S')
                 else:
                     running = processedEvents < max_process_event_chunk
     pbar.close()
     print("Ending time:" , event_time)
+    if tdc5:
+        return data, time, fReader
     return chunks, time, fReader
 
 def alignment(chunks, times = None, pdf = None):
@@ -299,50 +323,61 @@ def efficiency(chunks, residual = False, pdf = None):
     print("Possible reconstructions", reconstructor.possible_reconstructions)
     return max_eff
 
-def hit_time_hist(TDC_error_time, ranges = None, pdf = None):
-    colors = ['blue', 'green', 'red', 'purple', 'orange']
-    bins = list(range(0, 1251, 50)) + [float('inf')]
-    text_offset_base = 0.1
+def hit_time_hist(chunks, ranges = None, per_rpc = False, pdf = None):
+    result = []
+    std = []
     if not ranges:
-        ranges = [(0, len(TDC_error_time[0]))]
-    for tdc in range(5):
-        plt.figure(figsize=(12, 8))
-        text_offset = text_offset_base
-        for i, (range_start, range_end) in enumerate(ranges):
-            min_times = []
-            event_count = 0
-            last_process = -1
-            for entry, process in TDC_error_time[tdc]:
-                if last_process > process:
-                    event_count += 2500
-                if range_start <= process+event_count < range_end:
-                    min_times.append(entry[0])
-
-            counts, bin_edges = np.histogram(min_times, bins=bins)
-            bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
-            bin_centers[-1] = 1251
-
-            plt.plot(bin_centers, counts, label=f'TDC {tdc} ({range_start}-{range_end})', linestyle='-' if i % 2 == 0 else '--', marker='o' if i % 2 == 0 else 'x', color=colors[tdc])
-
-            overflow_count = counts[-1]
-            if overflow_count > 0:
-                plt.text(1200, 100 * text_offset, f'overflow count ({range_start}-{range_end}) == {overflow_count}', fontsize=12, 
-                        ha='center', va='bottom', color=colors[tdc], bbox=dict(facecolor='white', alpha=0.6))
-                text_offset *= 2
-
-    plt.yscale('log')
-    plt.xlabel('min_time')
-    plt.ylabel('Events')
-    plt.title(f'Histograms of min_time for TDC {tdc}')
-    plt.xlim(0, 1300)
-    plt.legend()
-    plt.grid(True)
-    if pdf:
-        pdf.savefig()  # Save the current figure to the PDF
-    else:
-        plt.show()
-    print("Hit Time Histogram Done")
+        ranges = [(0, len(chunks))]
+    for i, (start, end) in enumerate(ranges):
+        if per_rpc:
+            histograms = [[] for rpc in range(6)]
+        else:
+            histograms = [[] for tdc in range(5)]
+    
+        for event_chunk in chunks[start:end]:
+            if per_rpc:
+                temp = [[] for rpc in range(6)]
+            else:
+                temp = [[] for tdc in range(5)]
+            for tdc in range(5):
+                for event in event_chunk:
+                    for hit in event.tdcEvents[tdc].words:
+                        time = (hit & 0xfffff) #*(25/32)
+                        if per_rpc:
+                            rpc, _ = ATools.tdcChanToRPCHit(hit, tdc, 0)
+                            histograms[rpc].append(time) 
+                        else:
+                            histograms[tdc].append(time)
+    
+        fig, ax = plt.subplots(figsize=(10, 8))
+        new_std = []
+        new_hist = []
+        if per_rpc:
+            for rpc in range(6):
+                new_std.append(np.std(histograms[rpc]))
+                hist, binsx = np.histogram(histograms[rpc], bins=100, density=True)
+                ax.plot(binsx[:-1], hist, label=f"RPC{rpc}" )
+                new_hist.append((binsx, hist))
+        else:
+            for tdc in range(5):
+                new_std.append(np.std(histograms[tdc]))
+                hist, binsx = np.histogram(histograms[tdc], bins=100, density=True)
+                ax.plot(binsx[:-1], hist, label=f"TDC{tdc}" )
+                new_hist.append((binsx, hist))
+        std.append(new_std)
+        result.append(new_hist)
+        ax.set_title("Hit time histogram")
+        ax.set_ylabel('Normalized hit count')
+        ax.set_xlabel('Time (25/32 ns)')
+        ax.legend()
+        if pdf:
+            pdf.savefig()
+        else:
+            plt.show()
     plt.close()
+    print("Hit Time Histogram Done")
+    return result, std
+
 
 def hit_channel_hist(TDC_error_time, ranges = None, tdcs_to_plot=None, pdf=None):
     if not ranges:

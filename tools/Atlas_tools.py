@@ -176,7 +176,7 @@ class AtlasAnalyser():
 
     def _readingRoutine(self, tdc5Reads,trigger_channel, bcr_channel, previous_event_time, previous_last_bcr):
         bcr_count = 0
-        tdcEvent = tdc5Reads[0] #actual pile of data (timestamp, data)
+        tdcEvent = tdc5Reads #actual pile of data (timestamp, data)
         current_bcr = None
         counter = 0
         period = 1_048_575
@@ -224,12 +224,9 @@ class AtlasAnalyser():
                 print("New")
                 self.fReader = rawFileReader.fileReader(file)
                 self.anubis_file = file
-        if start and end:
-            total = end-start
-            units = "seconds"
-        else:
-            total = amount_of_events
-            units = "Events"  
+    
+        total = amount_of_events
+        units = "Events"  
         
         i = 0         
         with tqdm(total=total, desc=f"Reading", unit=units) as pbar: 
@@ -246,15 +243,16 @@ class AtlasAnalyser():
                         continue
                 else:
                     tdc5Reads = tdc5Events[i]
-
+                    
                 if i == 0:
-                    previous_event_time = tdc5Reads[0][0]
+                    initial_time = tdc5Reads[0]
+                    previous_event_time = tdc5Reads[0]
                     previous_last_bcr = 620958 #the ambiguity
                     i += 1
                     continue
                 i += 1
                 previous_event_time, previous_last_bcr = self._readingRoutine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time, previous_last_bcr)
-                pbar.update(self.anubis_data[-1].timeStamp - pbar.n)
+                pbar.update(1)
             #print(previous_event_time)
         return self.anubis_data
 
@@ -278,9 +276,9 @@ class AtlasAnalyser():
             initial_timestamp = datetime.datetime.timestamp(tdc5Reads[0][0])
         print(initial_timestamp)
         current_timestamp = initial_timestamp
-        with tqdm(total=round(start-initial_timestamp), desc=f"Skipping", unit="seconds") as pbar: 
+        with tqdm(total=round(start-initial_timestamp), desc=f"Skipping", unit=" seconds") as pbar: 
             while current_timestamp < start:
-                #self.fReader.skip_events(2)
+                #self.fReader.skip_events(1000)
                 if not self.fReader.readBlock():
                     raise EOFError("You have reached the end of the file")
                 if(self.fReader.hasEvents()):
@@ -290,10 +288,11 @@ class AtlasAnalyser():
                         continue
                 else:
                     continue
+                pbar.update(round(datetime.datetime.timestamp(tdc5Reads[0][0]) - current_timestamp, 3))
                 current_timestamp = datetime.datetime.timestamp(tdc5Reads[0][0])
                 #print(current_timestamp - pbar.n)
-                pbar.update(current_timestamp - pbar.n)
-               
+                
+                
         with tqdm(total=round(end - start), desc=f"Reading", unit="seconds") as pbar: 
             while current_timestamp < end:
                 if not self.fReader.readBlock():
@@ -346,20 +345,28 @@ class AtlasAnalyser():
                 hit_time = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
                 self.matches.append([self.atlas_data.iloc[atlas_pointer],[]])
                 i = anubis_pointer 
+                print("New atlas event")
+                print(hit_time)
                 while i < len(self.anubis_data):
+                    print("New bcr")
                     bcr = self.anubis_data[i]
+                    print(bcr.timeStamp)
                     if bcr.timeStamp < hit_time - time_window:
                         anubis_pointer = self.anubis_data.index(bcr)
                         i += 1
+                        print("Low")
                     if bcr.timeStamp < hit_time - 10*time_window: #if it is too far away do binary search
                         anubis_pointer = self.binary_search(anubis_pointer, hit_time, time_window)
                         i = anubis_pointer
+                        print("Binary")
                     if abs(bcr.timeStamp - hit_time) < time_window:
                         for trigger in bcr.triggers:
                             #if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
                             self.matches[atlas_pointer][1].append(trigger)
                         i += 1
+                        print("Match")
                     if bcr.timeStamp > hit_time + time_window:
+                        print("High")
                         break
                 pbar.update(1)
         return self.matches
