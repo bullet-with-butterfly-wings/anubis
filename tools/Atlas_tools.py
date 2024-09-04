@@ -33,7 +33,6 @@ class BCR():
         self.event_time = event_time
         self.timeStamp = datetime.datetime.timestamp(event_time) #+bcr_count*89100/10**9
         self.bcr_count = bcr_count #Do I needed??
-        self.cycle = 0
         self.triggers = []
         self.error = error
     
@@ -49,8 +48,16 @@ class BCR():
         #print("Trigger", trigger.hitTime)
         #print("Bcr", self.hitTime)
         trigger.bcId = delta/32.
-
+        trigger.error = self.error
+        """
+        if trigger.bcId > 3564:
+            print("Problem")
+            print("Trigger", trigger.hitTime)
+            print("Bcr", self.hitTime)
+            print(self.error)
+            print(self.triggers)
         #print("BCID", trigger.bcId)
+        """
         self.triggers.append(trigger)
 
 
@@ -59,6 +66,7 @@ class Trigger():
         self.hitTime = hitTime
         self.bcId = 0
         self.timeStamp = 0
+        self.error = False
     
     def __str__(self):
         return f"Trigger({self.hitTime}*25/32 ns, {self.timeStamp}, {self.bcId})"
@@ -103,15 +111,9 @@ class AtlasAnalyser():
         counter = 0
         period = 1_048_575
         interval = 114_048
-        cycle = 0
         with tqdm(total=len(self.anubis_data), desc=f"Correcting", unit='BCR') as pbar:
             while current < len(self.anubis_data):
                 now_bcr = self.anubis_data[current]
-                
-                if current != 0 and now_bcr.hitTime - self.anubis_data[current-1].hitTime < -2e5: #magic number
-                    cycle += 1
-                now_bcr.cycle = cycle
-
                 if now_bcr.error and not bad_stage:
                     #print("Bad stage started:", current)
                     bad_stage = True
@@ -158,6 +160,7 @@ class AtlasAnalyser():
                         #print("Sorted:", current)
                         #print("Events added:", prob_bcr_count-obs_bcr_count)
                         current += prob_bcr_count-obs_bcr_count
+                        pbar.update(prob_bcr_count-obs_bcr_count)
                     else:
                         triggers += now_bcr.triggers
                         if current - last > 9:
@@ -343,30 +346,27 @@ class AtlasAnalyser():
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):
                 hit_time = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
-                self.matches.append([self.atlas_data.iloc[atlas_pointer],[]])
+                self.matches.append([self.atlas_data.iloc[atlas_pointer].to_dict(), []])
                 i = anubis_pointer 
-                print("New atlas event")
-                print(hit_time)
                 while i < len(self.anubis_data):
-                    print("New bcr")
                     bcr = self.anubis_data[i]
-                    print(bcr.timeStamp)
                     if bcr.timeStamp < hit_time - time_window:
+                        """
                         anubis_pointer = self.anubis_data.index(bcr)
                         i += 1
-                        print("Low")
                     if bcr.timeStamp < hit_time - 10*time_window: #if it is too far away do binary search
+                        """
                         anubis_pointer = self.binary_search(anubis_pointer, hit_time, time_window)
                         i = anubis_pointer
-                        print("Binary")
-                    if abs(bcr.timeStamp - hit_time) < time_window:
-                        for trigger in bcr.triggers:
-                            #if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
-                            self.matches[atlas_pointer][1].append(trigger)
+                        bcr = self.anubis_data[i-1]
+                        if abs(bcr.timeStamp - hit_time) < time_window:
+                            for trigger in bcr.triggers:
+                                self.matches[atlas_pointer][-1].append(trigger)
+                    elif abs(bcr.timeStamp - hit_time) < time_window:
+                        for trigger in bcr.triggers:                            #if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
+                            self.matches[atlas_pointer][-1].append(trigger)
                         i += 1
-                        print("Match")
-                    if bcr.timeStamp > hit_time + time_window:
-                        print("High")
+                    elif bcr.timeStamp > hit_time + time_window:
                         break
                 pbar.update(1)
         return self.matches
@@ -388,7 +388,7 @@ def BCRHistogram(data, atlas = False, plot = True):
     counts, _ = np.histogram(hist, bins=bins, density=True)
     if plot:
         bins = bins[:-1]
-        plt.step(bins, counts)
+        plt.step(bins, counts, color="orange")
         
         plt.xlabel('Time since last BCR (ns)')
         plt.xlim(0, 3565)

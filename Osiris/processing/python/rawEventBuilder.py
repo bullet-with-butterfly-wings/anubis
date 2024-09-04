@@ -141,6 +141,7 @@ class eventBuilder():
         for event in thisRead:
             if len(event.words)==0:
                 event.qual = 0xf
+            print(event.qual)
             self.tdcEventBuffer[thisTDC].append(event)
         self.buildFullEvents()
         thisRead = []
