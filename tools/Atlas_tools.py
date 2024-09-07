@@ -344,7 +344,7 @@ class AtlasAnalyser():
     def pairBCRwithEvents(self):
         anubis_pointer = 0
         atlas_pointer = 0
-        time_window = 1#e-6
+        time_window = 89e-3
         self.matches = []
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):
@@ -375,6 +375,7 @@ class AtlasAnalyser():
                 pbar.update(1)
         return self.matches
     
+    
 def BCRHistogram(data, atlas = False, plot = True):
     if atlas:
         hist = data["BCID"]
@@ -383,16 +384,17 @@ def BCRHistogram(data, atlas = False, plot = True):
         problems = 0
         for bcr in data:
             for trigger in bcr.triggers:
-                if trigger.bcId > 3564:
+                if round(trigger.bcId) > 3564:
+                    print(trigger.bcId)
                     problems += 1
                 else:
                     hist.append(round(trigger.bcId))
         #strange number of problems ~ 8193
-    bins = [i for i in range(0,3564)]
+    bins = [i-0.5 for i in range(0,3565)] #-0.5,0.5,...3653.5
     counts, _ = np.histogram(hist, bins=bins, density=True)
     if plot:
-        bins = bins[:-1]
-        plt.step(bins, counts, color="orange")
+        bins = [i for i in range(0,3564)]
+        plt.plot(bins, counts, color="orange")
         
         plt.xlabel('Time since last BCR (ns)')
         plt.xlim(0, 3565)
