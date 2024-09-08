@@ -80,14 +80,14 @@ class AtlasAnalyser():
         self.anubis_data = []
         self.atlas_data = []
         
-    def printBCR(self, a,b):
+    def print_bcr(self, a,b):
         i = a
         while i < b:
             print(self.anubis_data[i])
             i += 1
 
 
-    def printEvents(self, amount_of_events):
+    def print_events(self, amount_of_events):
         last_event_time = datetime.datetime(1960,2,3) 
         evt_num = -1 #offset one
         bcr_num = 0
@@ -102,88 +102,96 @@ class AtlasAnalyser():
                 bcr_num += 1
             else:
                 evt_num = amount_of_events
+    
+    def correction_bcr(self):
+        buffer = self.anubis_data.copy()
+        interval = 100_000
+        with tqdm(total=len(buffer), desc=f"Spliting", unit='BCR') as pbar:
+            while buffer:
+                storage = f"data/bcr/bcr{pbar.n}.pkl"
+                with open(storage, "wb") as f:
+                    pickle.dump(buffer[:interval], f)
+                buffer = buffer[interval:]
+                pbar.update(interval)
+        
+        data_list = sorted([f for f in os.listdir("data//bcr") if os.path.isfile(os.path.join("data//bcr", f))], key=lambda x: int(x[3:-4]))
+        with tqdm(total=len(data_list), desc=f"Correcting", unit='files') as pbar:
+            for data in data_list:
+                with open(f"data//bcr//{data}", "rb") as f:
+                    bcrs = pickle.load(f)
+                bcrs = self.correction_bcr_routine(bcrs)
+                with open(f"data//bcr//{data}", "wb") as f:
+                    pickle.dump(bcrs, f)
+                pbar.update(1)
 
-    def correctionBCR(self):
-        gc.disable()
+        for data in data_list: #necessary because of garbage collector ig
+            with open(f"data//bcr//{data}", "rb") as f:
+                self.anubis_data += pickle.load(f)
+        
+        with open(f"data//corrected_bcr.pkl", "wb") as f:
+            pickle.dump(self.anubis_data, f)
+        print("Error rate:", sum([bcr.error*1 for bcr in self.anubis_data])/len(self.anubis_data))
+        return self.anubis_data
+
+
+
+
+    def correction_bcr_routine(self, bcrs):
         last = 0
         current = 0
         bad_stage = False
-        counter = 0
         period = 1_048_575
         interval = 114_048
-        with tqdm(total=len(self.anubis_data), desc=f"Correcting", unit='BCR') as pbar:
-            while current < len(self.anubis_data):
-                now_bcr = self.anubis_data[current]
-                if now_bcr.error and not bad_stage:
-                    #print("Bad stage started:", current)
-                    bad_stage = True
-                    last = current - 1
-                    good_bcr = self.anubis_data[last]
-                    triggers = good_bcr.triggers.copy() #handle triggers later
-                    good_bcr.triggers = []
-                
-                if bad_stage:
-                    #print("In bad stage:", current)
-                    #print(now_bcr)
-                    delta = now_bcr.hitTime - good_bcr.hitTime
-                    if delta < 0:
-                        delta += period
-                    #print("Delta:", delta)
-                    if  delta % interval < 50 or interval - (delta % interval) < 50: #no overflow
-                        prob_bcr_count  = round(delta / interval)
-                        obs_bcr_count = current - last
-                        for bad_bcr in range(last+1, current): #remove and replace
-                            del self.anubis_data[last+1]
-                        #print(self.anubis_data[last-4:current+4])
-                        for new_bcr in range(0,prob_bcr_count):
-                            if new_bcr != 0:
-                                self.anubis_data.insert(last+new_bcr, BCR((good_bcr.hitTime+(new_bcr)*interval) % period, good_bcr.event_time))
-                            for trig in triggers:
-                                previous = (good_bcr.hitTime+(new_bcr)*interval) % period
-                                next = (good_bcr.hitTime+(new_bcr+1)*interval) % period
-                                overflow = False
-                                if previous > next:
-                                    next += period
-                                    #print("Overflow")
-                                    overflow = True
-                                    #print("Last:", last)
-                                    #print(previous < trig.hitTime + period < next)
-                                    #print(last < trig.hitTime < next)
-                                if previous < trig.hitTime < next or (overflow and previous < trig.hitTime + period < next):
-                                    self.anubis_data[last+new_bcr].add_trigger(trig)
-                                    triggers.remove(trig)
-                                else:
-                                    break
-                        #print("Rerranged")
-                        #print(triggers)
-                        #self.printBCR(last,last+prob_bcr_count)
-                        #print("Rerranged")
-                        now_bcr.error = False
+        while current < len(bcrs):
+            now_bcr = bcrs[current]
+            if now_bcr.error and not bad_stage:
+                bad_stage = True
+                last = current - 1
+                good_bcr = bcrs[last]
+                triggers = good_bcr.triggers.copy() #handle triggers later
+                good_bcr.triggers = []
+            
+            if bad_stage:
+                delta = now_bcr.hitTime - good_bcr.hitTime
+                if delta < 0:
+                    delta += period
+                if  delta % interval < 50 or interval - (delta % interval) < 50: #no overflow
+                    prob_bcr_count  = round(delta / interval)
+                    obs_bcr_count = current - last
+                    for bad_bcr in range(last+1, current): #remove and replace
+                        del bcrs[last+1]
+                    for new_bcr in range(0,prob_bcr_count):
+                        if new_bcr != 0:
+                            bcrs.insert(last+new_bcr, BCR((good_bcr.hitTime+(new_bcr)*interval) % period, good_bcr.event_time))
+                        for trig in triggers:
+                            previous = (good_bcr.hitTime+(new_bcr)*interval) % period
+                            next = (good_bcr.hitTime+(new_bcr+1)*interval) % period
+                            overflow = False
+                            if previous > next:
+                                next += period
+                                overflow = True
+                            if previous < trig.hitTime < next or (overflow and previous < trig.hitTime + period < next):
+                                bcrs[last+new_bcr].add_trigger(trig)
+                                triggers.remove(trig)
+                            else:
+                                break
+                    now_bcr.error = False
+                    bad_stage = False
+                    current += prob_bcr_count-obs_bcr_count
+                else:
+                    triggers += now_bcr.triggers
+                    if current - last > 9:
                         bad_stage = False
-                        #print(self.anubis_data[last-4:current+4])
+                        bcrs[current+1].error = False
 
-                        #bcr_number += prob_bcr_count-obs_bcr_count+1
-                        #print("Sorted:", current)
-                        #print("Events added:", prob_bcr_count-obs_bcr_count)
-                        current += prob_bcr_count-obs_bcr_count
-                        pbar.update(prob_bcr_count-obs_bcr_count)
-                    else:
-                        triggers += now_bcr.triggers
-                        if current - last > 9:
-                            #print("Give up")
-                            bad_stage = False
-                            self.anubis_data[current+1].error = False
-
-                    if not now_bcr.error and bad_stage:
-                        #print("Fixed")
-                        bad_stage = False
-                pbar.update(1)
-                current += 1
-        return counter
+                if not now_bcr.error and bad_stage:
+                    bad_stage = False
+            current += 1
+        return bcrs
                    
                    
 
-    def _readingRoutine(self, tdc5Reads,trigger_channel, bcr_channel, previous_event_time, previous_last_bcr):
+    def _reading_routine(self, tdc5Reads,trigger_channel, bcr_channel, previous_event_time, previous_last_bcr):
         tdcEvent = tdc5Reads #actual pile of data (timestamp, data)
         current_bcr = None
         counter = 0
@@ -219,10 +227,14 @@ class AtlasAnalyser():
         a = current_bcr.hitTime if current_bcr else previous_last_bcr
         return  tdcEvent[0], a#current_bcr.hitTime
    
-    def getTDC5Data(self,file, trigger_channel, bcr_channel = 0, amount_of_events=100, start = None, end = None):
+    def get_tdc5_data(self,file, trigger_channel, bcr_channel = 0, amount_of_events=100, from_bcr = False):
         initial_time = None
         previous_event_time = None
         fromPKL = (file[-4:] == ".pkl")
+        if from_bcr: #everything is already in the file
+            with open(file, 'rb') as inp:
+                self.anubis_data = pickle.load(inp)
+            return self.anubis_data[:amount_of_events]
         if fromPKL:
             with open(file, 'rb') as inp:
                 tdc5Events = pickle.load(inp)
@@ -232,12 +244,9 @@ class AtlasAnalyser():
                 self.fReader = rawFileReader.fileReader(file)
                 self.anubis_file = file
     
-        total = amount_of_events
-        units = "Events"  
-        
-        i = 0         
-        with tqdm(total=total, desc=f"Reading", unit=units) as pbar: 
-            while i < total:
+        with tqdm(total=amount_of_events, desc=f"Reading", unit="Events") as pbar: 
+            i = 0     
+            while i < amount_of_events:
                 if not fromPKL:
                     if not self.fReader.readBlock():
                         raise EOFError("You have reached the end of the file")
@@ -258,68 +267,13 @@ class AtlasAnalyser():
                     i += 1
                     continue
                 i += 1
-                previous_event_time, previous_last_bcr = self._readingRoutine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time, previous_last_bcr)
+                previous_event_time, previous_last_bcr = self._reading_routine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time, previous_last_bcr)
                 pbar.update(1)
             #print(previous_event_time)
         return self.anubis_data
 
-    def saveTDC5Data(self, file, storage, start = None, end = None):
-        if not self.fReader or self.anubis_file != file: 
-            print("New fReader")
-            self.fReader = rawFileReader.fileReader(file)
-            self.anubis_file = file
 
-        initial_timestamp = 0
-        while initial_timestamp == 0:
-            if not self.fReader.readBlock():
-                raise EOFError("You have reached the end of the file")                    
-            if(self.fReader.hasEvents()):
-                tdc5Reads = self.fReader.getTDCFiveEvents()
-                if not tdc5Reads:
-                    continue
-            else:
-                continue
-            initial_timestamp = datetime.datetime.timestamp(tdc5Reads[0][0])
-        print(initial_timestamp)
-        current_timestamp = initial_timestamp
-        with tqdm(total=round(start-initial_timestamp), desc=f"Skipping", unit=" seconds") as pbar: 
-            while current_timestamp < start:
-                #self.fReader.skip_events(1000)
-                if not self.fReader.readBlock():
-                    raise EOFError("You have reached the end of the file")
-                if(self.fReader.hasEvents()):
-                    tdc5Reads = self.fReader.getTDCFiveEvents()
-                    #print(tdc5Reads)
-                    if not tdc5Reads:
-                        continue
-                else:
-                    continue
-                pbar.update(round(datetime.datetime.timestamp(tdc5Reads[0][0]) - current_timestamp, 3))
-                current_timestamp = datetime.datetime.timestamp(tdc5Reads[0][0])
-                #print(current_timestamp - pbar.n)
-                
-                
-        with tqdm(total=round(end - start), desc=f"Reading", unit="seconds") as pbar: 
-            while current_timestamp < end:
-                if not self.fReader.readBlock():
-                    raise EOFError("You have reached the end of the file")
-                
-                if(self.fReader.hasEvents()):
-                    tdc5Reads = self.fReader.getTDCFiveEvents()
-                    if not tdc5Reads:
-                        continue
-                else:
-                    continue
-                self.TDC5Reads.append(tdc5Reads)
-                current_timestamp = datetime.datetime.timestamp(tdc5Reads[0][0])
-                pbar.update(round(current_timestamp - pbar.n))
-
-        with open(storage, "wb") as f:
-            pickle.dump(self.TDC5Reads, f)
-            print("Saved")
-        return self.TDC5Reads
-
-    def getAtlasData(self, file):
+    def get_atlas_data(self, file):
         self.atlas_file = file
         testFile = uproot.open(self.atlas_file)
         anaTree = testFile["analysis"]
@@ -330,6 +284,7 @@ class AtlasAnalyser():
         self.atlas_data = self.atlas_data.sort_values(by=["TimeStamp", "TimeStampNS"])
         return self.atlas_data
     
+    #check
     def binary_search(self, anubis_pointer, hit_time, time_window):
         left = anubis_pointer
         right = len(self.anubis_data)
@@ -341,10 +296,10 @@ class AtlasAnalyser():
                 right = mid
         return left
 
-    def pairBCRwithEvents(self):
+    def match_bcrs(self):
         anubis_pointer = 0
         atlas_pointer = 0
-        time_window = 89e-3
+        time_window = 89e-6
         self.matches = []
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):
@@ -376,7 +331,7 @@ class AtlasAnalyser():
         return self.matches
     
     
-def BCRHistogram(data, atlas = False, plot = True):
+def bcr_histogram(data, atlas = False, plot = True):
     if atlas:
         hist = data["BCID"]
     else:
@@ -385,7 +340,6 @@ def BCRHistogram(data, atlas = False, plot = True):
         for bcr in data:
             for trigger in bcr.triggers:
                 if round(trigger.bcId) > 3564:
-                    print(trigger.bcId)
                     problems += 1
                 else:
                     hist.append(round(trigger.bcId))
@@ -402,3 +356,163 @@ def BCRHistogram(data, atlas = False, plot = True):
         plt.title(f'Histogram of BCID {"Atlas" if atlas else "Anubis"}')
         plt.show()
     return counts
+
+def positionn_filter_atlas(data, eta_func, phi_func):
+    with tqdm(total=len(data.values)) as pbar:
+        good_indices = []
+        for i in range(len(data.values)):
+            hits = data.iloc[i]
+            for p in range(len(hits["mu_eta"])): #0.93, 0.83, 1.57
+                if  eta_func(hits["mu_eta"][p]) and phi_func(hits["mu_phi"][p]):
+                    good_indices.append(i)
+                    break
+            pbar.update(1)
+    data = data.iloc[good_indices]
+    return data
+def beam_luminosity(data, plot = True):
+    #beam luminosity
+    times = data["TimeStamp"]
+    hist, bins = np.histogram(times, bins=100)
+    plt.plot(bins[:-1], hist)
+    plt.show()
+
+def eta_distribution(data, plot = True): #returns a list of etas
+    hist_eta = []
+    for i in range(len(data.values)):
+        hits = data.iloc[i]
+        for p in range(len(hits["mu_eta"])):
+                hist_eta.append(hits["mu_eta"][p])
+
+    if plot:
+        plt.title("Density of muons by eta")
+        plt.xlabel("Eta")
+        plt.xlim(-3, 3)
+        plt.hist(hist_eta, bins=100, density=True)
+        plt.show()
+    return hist_eta
+
+"""
+# set the times
+analyser.atlas_data = analyser.atlas_data[analyser.atlas_data["TimeStamp"] > analyser.anubis_data[0].timeStamp]
+print("Anubis", (round(analyser.anubis_data[0].timeStamp), round(analyser.anubis_data[-1].timeStamp)))
+print("ATLAS",(analyser.atlas_data.iloc[0]["TimeStamp"], analyser.atlas_data.iloc[-1]["TimeStamp"]))
+"""
+
+def convert_matches(matches, best_offset):
+    eta = []
+    phi = []
+    times = []
+    heatmaps = [[0 for x in range(3564)] for y in range(3564)]
+    matches = [x for x in matches if x[1]]
+    for i in range(len(matches)):
+        atlas_hits = matches[i][0]
+        mu_eta = list(atlas_hits["mu_eta"])
+        mu_phi = list(atlas_hits["mu_phi"])
+
+        for p in range(len(mu_phi)): 
+            #if 0.95 > mu_eta[p] > 0.8 and abs(mu_phi[p]) < 0.1:        
+            if matches[i][1]:
+                for trigger in matches[i][1]:
+                    #if round(trigger.bcId+best_offset-matches[i][0]["BCID"]) < 3500:
+                    #if abs(round(trigger.bcId-matches[i][0]["BCID"])) > 1000:
+                    #    continue
+                    if trigger.bcId > 3564:
+                        continue
+                    anubis_hit = round(trigger.bcId+best_offset) % 3564
+                    
+                    heatmaps[anubis_hit][matches[i][0]["BCID"]] += 1
+                    #diffs.append(cdf[round(trigger.bcId+best_offset)] - cdf[matches[i][0]["BCID"]])
+                    times.append(anubis_hit-matches[i][0]["BCID"])
+                    if abs(anubis_hit-matches[i][0]["BCID"]) < 1:
+                            eta.extend(mu_eta)
+                            phi.extend(mu_phi)        
+
+                    """
+                    if round((trigger.bcId+best_offset) - matches[i][0]["BCID"]) < 0: #pod 
+                        if abs(round((trigger.bcId+best_offset) - matches[i][0]["BCID"])) < 3564 - abs(round((trigger.bcId+best_offset) - matches[i][0]["BCID"])):
+                            times.append(round((trigger.bcId+best_offset) - matches[i][0]["BCID"]))
+                        else:
+                            times.append(3564 + round((trigger.bcId+best_offset) - matches[i][0]["BCID"]))
+                    else: #trigger nad tebou
+                        if abs(round((trigger.bcId+best_offset) - matches[i][0]["BCID"])) < 3564 - abs(round((trigger.bcId+best_offset) - matches[i][0]["BCID"])):
+                            times.append(round((trigger.bcId+best_offset) - matches[i][0]["BCID"]))
+                        else:
+                            times.append(-3564 + round((trigger.bcId+best_offset) - matches[i][0]["BCID"]))
+                    """
+                break
+    return times, eta, phi, heatmaps
+
+"""
+# Define the step sizes for x and y
+phi_step = 0.1  # Step size for x-axis
+eta_step = 0.2  # Step size for y-axis
+
+# Generate the ranges based on step size
+eta_range = np.arange(-2.5, 2.5 + eta_step, eta_step)  # Range from -2.5 to 2.5
+phi_range = np.arange(-np.pi, np.pi + phi_step, phi_step)  # Range from -pi to pi
+
+# Generate the grid using meshgrid
+phi_coordinates, eta_coordinates = np.meshgrid(phi_range, eta_range)
+#print(phi_coordinates) #changes phi
+#print(eta_coordinates) #changes eta
+
+# Iterate over every single point in the grid
+buffer = matches.copy()
+objects = [[[] for i in range(phi_coordinates.shape[1])] for j in range(phi_coordinates.shape[0])]
+with tqdm(total=len(buffer)) as pbar:
+    for hit in matches:
+        found = False
+        pbar.update(1)
+        for i in range(phi_coordinates.shape[0]):
+            for j in range(phi_coordinates.shape[1]):
+                phi_val = phi_coordinates[i, j]
+                eta_val = eta_coordinates[i, j]
+                #print(f"Point ({phi_val}, {eta_val})")
+                for p in range(len(hit[0]["mu_eta"])):
+                    if eta_val+eta_step/2 > hit[0]["mu_eta"][p] > eta_val-eta_step/2 and abs(hit[0]["mu_phi"][p] - phi_val) < phi_step/2:
+                        for trigger in hit[1]:
+                            if abs(round(trigger.bcId+best_offset-matches[i][0]["BCID"])) < 1000:
+                                objects[i][j].append(round(trigger.bcId+best_offset-matches[i][0]["BCID"])) #add times
+                        found = True
+                        break
+                if found:
+                    break
+            if found:
+                break        
+
+from collections import Counter
+std_grid = 1000*np.ones((phi_coordinates.shape[0], phi_coordinates.shape[1]))
+
+minimum = 10_000
+# Iterate through the grid cells
+for i in range(len(objects)):
+    for j in range(len(objects[i])):
+        if len(objects[i][j]) > 0:
+            # Calculate the standard deviation of the numbers in this grid cell
+            std_grid[i][j] = np.std(objects[i][j])#(Counter(objects[i][j]).most_common(1)[0][1]) if len(objects[i][j]) > 1 else 0
+            if minimum > std_grid[i][j]:
+                minimum = std_grid[i][j]
+                print((i,j))
+                print(phi_coordinates[i, j], eta_coordinates[i, j])
+# Output the standard deviation array
+print("Standard deviation for each grid cell:")
+print(std_grid)
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Assuming std_grid is already calculated and phi_coordinates, eta_coordinates are defined
+
+# Plotting a heatmap of std_grid
+plt.imshow(std_grid, cmap='plasma', extent=[eta_coordinates.min(), eta_coordinates.max(),
+                                            phi_coordinates.min(), phi_coordinates.max()],
+           origin='lower', aspect='auto')
+
+plt.colorbar(label='Standard Deviation')
+plt.xlabel("Eta")
+plt.ylabel("Phi")
+plt.title("Heatmap of Standard Deviations")
+plt.show()
+
+    
+"""
