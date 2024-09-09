@@ -521,6 +521,7 @@ def cluster_size(chunks, residual = False, seperate = False):
             histogram.append([phi_histograms[rpc]]+[eta_histograms[rpc]]) # only 6 together
     else:
         histograms = phi_histograms + eta_histograms #first 6 phi, next 6 eta
+    print(len(histograms[0]))
     histograms = np.array(histograms, dtype=object)
     avg_cluster_size = [np.mean(rpc_clusters) for rpc_clusters in histograms]
     errors = []

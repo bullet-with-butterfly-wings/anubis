@@ -100,7 +100,7 @@ def cluster(coincident_hits):
                     previous_element = hit[1]
                     rpc_phi_clusters.append([hit])
                 else:
-                    if abs(hit[1] - previous_element) > 1:
+                    if abs(hit[1] - previous_element) > 3:
                         rpc_phi_clusters.append([hit])
                         i += 1
                     else:
@@ -113,7 +113,7 @@ def cluster(coincident_hits):
                     previous_element = hit[1]
                     rpc_eta_clusters.append([hit])
                 else:
-                    if abs(hit[1] - previous_element) > 1:
+                    if abs(hit[1] - previous_element) > 3:
                         rpc_eta_clusters.append([hit])
                         j += 1
                     else:
