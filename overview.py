@@ -5,7 +5,7 @@ import  os
 import pickle
 import glob
 
-dir_path = "/usera/jd2052/Documents/anubis/" # insert your directory path
+dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//" # insert your directory path
 sys.path.append(dir_path + "Osiris//processing//python")
 sys.path.append(dir_path + "tools")
 
@@ -62,7 +62,7 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
                     event_counter += 2_000
                     pbar.update(2_000)
 
-    print("Skip time", event_time)          
+        print("Skip time", event_time)          
     if end:
         total_limit = (datetime.strptime(end, '%Y-%m-%d %H:%M:%S') - datetime.strptime(start, '%Y-%m-%d %H:%M:%S')).total_seconds()
         unit = "seconds"

@@ -299,7 +299,7 @@ class AtlasAnalyser():
     def match_bcrs(self):
         anubis_pointer = 0
         atlas_pointer = 0
-        time_window = 89e-6
+        time_window = 1#89e-6
         self.matches = []
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):
@@ -516,3 +516,72 @@ plt.show()
 
     
 """
+def generate_random_triggers(lenthg):
+    with open("data/bcr_histogram.pkl", "rb") as f:
+        density = pickle.load(f)
+    found = 0
+    random_bcr = []
+    bound = max(density)
+    while found < lenthg:
+        bx = np.random.randint(0, 3564)
+        value = np.random.uniform(0, bound)
+        if value < density[bx]:
+            random_bcr.append(bx)
+            found += 1
+    return random_bcr
+
+def plot_offset(analyser):
+    #Calculate the BCR offset
+    anubis = bcr_histogram(analyser.anubis_data, atlas=False, plot = False)
+    atlas = bcr_histogram(analyser.atlas_data, atlas=True, plot = False)
+
+    window_size = 100
+    #anubis = np.convolve(np.append(anubis, anubis[:window_size]), np.ones(window_size)/window_size, mode='valid')
+    #atlas = np.convolve(np.append(atlas, atlas[:window_size]), np.ones(window_size)/window_size, mode='valid')
+    error = 100
+    errors = []
+
+    for offset in range(-200,200):
+        errors.append(np.sum((atlas - np.roll(anubis, offset))**2))
+        if np.sum((atlas - np.roll(anubis, offset))**2) < error:
+            error = np.sum((atlas - np.roll(anubis, offset))**2)
+            best_offset = offset
+    
+    print("Best offset", best_offset)
+    plt.plot(atlas, label="ATLAS")
+    plt.plot(anubis, label="proANUBIS") #np.roll(anubis, best_offset)
+    #plt.plot(anubis, label="Shifted proANUBIS") 
+    plt.xlim(0, 3565)
+    plt.ylabel("Counts (normalized)")
+    plt.xlabel("BX")
+    plt.title("proANUBIS and ATLAS Bunch Crossing Histograms - original")
+    plt.legend()
+    plt.show()
+
+    plt.plot(list(range(-200,200)), errors, label="Errors")
+    plt.xlabel("Offset")
+    plt.ylabel("Sum of Square Errors")
+    plt.title("Sum of Square Errors vs Offset")
+    plt.vlines(best_offset,0, max(errors), color = "red", label=f"Best Offset: {best_offset}")
+    plt.ylim(0,max(errors))
+    plt.legend(loc = "lower left") #position
+
+    plt.show()
+
+def get_cdf(anubis_data):
+    import scipy
+    bcr_histogram = bcr_histogram(anubis_data)
+    cdf = []
+    total = 0
+    for point in bcr_histogram:
+        total += point
+        cdf.append(total)
+
+    print("CDF done")
+    print(cdf)
+
+    plt.title("CDF of proANUBIS BCR Histogram")
+    plt.ylabel("CDF")
+    plt.xlabel("BX")
+    plt.plot(cdf)
+    plt.show()

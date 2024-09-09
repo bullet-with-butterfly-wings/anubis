@@ -118,7 +118,7 @@ class Reconstructor():
             for rpc in range(6):
                 for i, data in enumerate(dataset):
                     if RTools.count_entries(data) < 100:
-                        E_recon = RTools.reconstruct_timed_Chi2_ByRPC(data, 3, rpc)
+                        E_recon = RTools.reconstruct_timed_Chi2_ByRPC(data, 3, rpc) #why is it excluded?
                         if E_recon:
                             if len(E_recon[2]) >= 5:
                                 if E_recon[4] > chi2_region[0] and E_recon[4] < chi2_region[1]:

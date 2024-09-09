@@ -821,3 +821,7 @@ def compile_and_plot_tof_chunk(dTs, rpc_indicies=[[0,1], [0,2], [0,3], [0,4], [0
                     print(f'Gaussian fit failed for RPC{i}-{chunk_index + 1}')
 
     return pdf_filename
+
+
+def find_double_particles():
+    pass
