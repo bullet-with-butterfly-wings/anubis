@@ -85,9 +85,14 @@ class Reconstructor():
             skip_event = False
             if skip_event:
                 continue 
+            check = []
             for tdc in range(5):
                 for word in event.tdcEvents[tdc].words:
                     rpc, thisHit = ATools.tdcChanToRPCHit(word,tdc, self.processedEvents + idx)
+                    if (rpc, self.processedEvents + idx) in check:
+                        print([((ev >> 24) & 0x7f, ev & 0xfffff) for ev in event.tdcEvents[tdc].words])
+                        print("Yesss")
+                    check.append((rpc, self.processedEvents + idx))
                     if thisHit.channel == [0]:
                         continue
                     if thisHit.eta:
@@ -95,6 +100,7 @@ class Reconstructor():
 
                     else:
                         self.phiHits[rpc].append(thisHit)
+            print(check)
                                                  
     def update_event(self, event_chunk, processed_event):
         self.event_chunk = event_chunk
