@@ -61,10 +61,8 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
                     fReader.skip_events(2_000)
                     event_counter += 2_000
                     pbar.update(2_000)
-        initial_chunk = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = False)
-        event_time = max([initial_chunk[0].tdcEvents[tdc].time for tdc in range(5) if initial_chunk[0].tdcEvents[tdc].time])
-        print("Skip time", event_time)          
-    
+
+    print("Skip time", event_time)          
     if end:
         total_limit = (datetime.strptime(end, '%Y-%m-%d %H:%M:%S') - datetime.strptime(start, '%Y-%m-%d %H:%M:%S')).total_seconds()
         unit = "seconds"
@@ -124,6 +122,7 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
                     running = processedEvents < max_process_event_chunk
     pbar.close()
     print("Ending time:" , event_time)
+    print("Number of chunks:", len(chunks))
     if tdc5:
         return data, time, fReader
     return chunks, time, fReader

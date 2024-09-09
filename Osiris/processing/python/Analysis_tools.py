@@ -18,7 +18,7 @@ def tdcChanToRPCHit(word, tdc, event_num):
         eta = False
         rpcChan = -1
         if tdc == 0:
-            if tdcChannel < 32:
+            if tdcChannel < 32: 
                 rpcChan = tdcChannel
                 eta = True
                 rpc = 0
