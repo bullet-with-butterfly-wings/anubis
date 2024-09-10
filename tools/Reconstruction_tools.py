@@ -343,7 +343,7 @@ def fit_event_chi2(coordinates_with_error, rpc_indicies = None):
 
     Chi2 = 0
 
-    i = 0 
+    i = 0 #degrees of freeedom
 
     for point in coordinates_with_error:
         
@@ -426,9 +426,12 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
     #Doesn't look particularly nice, but there are not many coordinates to loop over usually....
 
     combinations = generate_hit_coords_combo_Chi2(coords,RPC_heights)
-
+    """
+    print(len(combinations))
     if len(combinations) > 20:
         return None
+    """
+    
     #Now for each combo in combinations, attempt to reconstruct a path. See which one gives the best trajectory.
 
     #If success, print parameters of fitting function.
@@ -455,7 +458,7 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
             optimised_coords = coordinates
 
     #if dT>0 this implies the particles hit the higher RPC after the lower one, so the particle is travelling upwards here.
-    #Vice-versa for dT < 0.
+    #Vice-versa for dT < 0. The condition below make the right direction
     if dT[-1] is not None:
         if dT[-1] > 0:
             if optimised_d[2] < 0:
@@ -621,6 +624,7 @@ def reconstruct_timed_Chi2_modified(event,max_cluster_size, max_length=None, exa
 
     #dT = 0 case?
     
+    print(dT[-1])
     if dT[-1] is not None:
         if dT[-1] > 0:
             if optimised_d[2] < 0:
@@ -628,12 +632,12 @@ def reconstruct_timed_Chi2_modified(event,max_cluster_size, max_length=None, exa
         else:
             if optimised_d[2] > 0:
                 optimised_d = np.multiply(optimised_d,0)
-
+        print(Chi2_current)
         if Chi2_current<max_Chi2:
             return optimised_centroid, optimised_d, optimised_coords, combinations, Chi2_current, dT, dZ
 
         else:
-            #print("Failed to reconstruct, Chi2 too large")
+            print(f"Failed to reconstruct, Chi2 too large {Chi2_current}")
             #return optimised_centroid, optimised_d, optimised_coords, combinations, residuals_current
             return None
         
