@@ -390,7 +390,6 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
 
     #Extract x and y coords of cluster in event
     coords = extract_coords_timed_Chi2(event,max_cluster_size)
-
     test_coords = -1
 
     # Filter out coords of RPC under test 
@@ -405,7 +404,7 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
     # If less than 3 elements of coords are occupied, exit the function
     if empty_RPC_count > 4:
         # print("Failed to reconstruct, not enough coords")
-        return None  # Exit the function
+        return []  # Exit the function
     
     cross_chamberness = 0
 
@@ -420,12 +419,11 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
 
     if cross_chamberness < 2:
         # print("Failed to reconstruct, too few chambers")
-        return None
+        return []
 
     #ITERATING OVER EVERY POSSIBLE COMBINATION OF x,y,z over all 3 RPCs (limited to one x,y per RPC).
     #Doesn't look particularly nice, but there are not many coordinates to loop over usually....
 
-    combinations = generate_hit_coords_combo_Chi2(coords,RPC_heights)
     """
     print(len(combinations))
     if len(combinations) > 20:
@@ -436,47 +434,61 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
 
     #If success, print parameters of fitting function.
     #If fail, print reconstruction failed.
+    something = True
+    tracks = []
 
-    Chi2_current = np.inf
-    optimised_coords = None
-    optimised_d= None
-    optimised_centroid= None
-    dT = [None]
+    while something:
+        combinations = generate_hit_coords_combo_Chi2(coords,RPC_heights)
+        Chi2_current = np.inf
+        optimised_coords = None
+        optimised_d= None
+        optimised_centroid= None
+        dT = [None]
 
-    for ind,combo in enumerate(combinations):
-        if len(combo) < 5:
-            continue
-        centroid, d, Chi2, coordinates, delta_T, delta_Z= fit_event_chi2(combo, rpc_indicies = rpc_indicies)
-        if Chi2 < Chi2_current:
+        for ind,combo in enumerate(combinations):
+            if len(combo) < 5:
+                continue
+            centroid, d, Chi2, coordinates, delta_T, delta_Z= fit_event_chi2(combo, rpc_indicies = rpc_indicies)
+            if Chi2 < Chi2_current:
 
-            # If new fit is better than old then replace old fit properties.
-            dZ = delta_Z 
-            dT = delta_T
-            Chi2_current = Chi2
-            optimised_centroid = centroid
-            optimised_d = d
-            optimised_coords = coordinates
+                # If new fit is better than old then replace old fit properties.
+                dZ = delta_Z 
+                dT = delta_T
+                Chi2_current = Chi2
+                optimised_centroid = centroid
+                optimised_d = d
+                optimised_coords = coordinates
+                winning_combo = combo
 
-    #if dT>0 this implies the particles hit the higher RPC after the lower one, so the particle is travelling upwards here.
-    #Vice-versa for dT < 0. The condition below make the right direction
-    if dT[-1] is not None:
-        if dT[-1] > 0:
-            if optimised_d[2] < 0:
-                optimised_d = np.multiply(optimised_d,-1)
+        #if dT>0 this implies the particles hit the higher RPC after the lower one, so the particle is travelling upwards here.
+        #Vice-versa for dT < 0. The condition below make the right direction
+        if dT[-1] is not None:
+            if dT[-1] > 0:
+                if optimised_d[2] < 0:
+                    optimised_d = np.multiply(optimised_d,-1)
+            else:
+                if optimised_d[2] > 0:
+                    optimised_d = np.multiply(optimised_d,-1)
+
+
+            if Chi2_current<max_Chi2:
+                # print('success')
+                tracks.append([optimised_centroid, optimised_d, optimised_coords, combinations, Chi2_current, dT, dZ, test_coords])
+            else:
+                return tracks
         else:
-            if optimised_d[2] > 0:
-                optimised_d = np.multiply(optimised_d,-1)
-
-
-        if Chi2_current<max_Chi2:
-            # print('success')
-            return optimised_centroid, optimised_d, optimised_coords, combinations, Chi2_current, dT, dZ, test_coords
-
-    else:
-        # print('Really, reallly poor Chi2 fit...')
-        return None
-    
-    
+            # print('Really, reallly poor Chi2 fit...')
+            return tracks
+        for point in winning_combo:
+            try:
+                rpc = RPC_heights.index(point[2])
+                coords[rpc][0].remove(point[0])
+                coords[rpc][1].remove(point[1])
+            except:
+                print("ups")
+                print("Winner:", winning_combo)
+                print(coords)
+                print(point)    
     
 
 def does_muon_hit_RPC(optimised_centroid, optimised_d, RPC):

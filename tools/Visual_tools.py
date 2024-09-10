@@ -4,6 +4,7 @@ from tqdm import tqdm
 import numpy as np
 import  os
 import glob
+import matplotlib.pyplot as plt
 # Add the directories to the sys.path
 dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//" # insert your directory path
 sys.path.append(dir_path + "Osiris//processing//python")
@@ -95,6 +96,79 @@ def hitHeatMap(event): #actually returns 6 heatmaps, one for each rpc
                 else:
                     heatMaps[hit.rpc][:,hit.channel] += np.ones(32)
     return heatMaps
+
+def event_3d_plot(proAnubis_event):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Coordinates for the horizontal plane at z = 60
+    RPC_heights = [0.6, 1.8, 3.0, 61.8, 121.8, 123]
+    distance_per_phi_channel = 2.7625 #cm
+    distance_per_eta_channel = 2.9844 #cm
+    dimensions = [distance_per_phi_channel*64, distance_per_eta_channel*32]
+    print(dimensions)
+    x = np.array([0, dimensions[0]])
+    y = np.array([0, dimensions[1]])
+    X, Y = np.meshgrid(x, y)
+    for rpc_h in RPC_heights:
+        z_plane = np.ones((1, 1))*rpc_h  # Horizontal plane at z = 60
+        ax.plot_surface(X, Y, z_plane, color='blue', alpha=0.1)
+
+    # Plot the full horizontal plane (green)
+
+    # make the hits
+    hits = []
+    for tdc in range(5):
+        for word in proAnubis_event.tdcEvents[tdc].words:
+            _, hit = ATools.tdcChanToRPCHit(word, tdc, 0)
+            hits.append(hit)
+
+    for hit in hits:
+        if hit.eta: #eta
+            stripe_coord = [hit.channel*distance_per_phi_channel,hit.channel*distance_per_phi_channel+1]
+            x_stripe = np.array([[0, 0], [dimensions[0], dimensions[0]]])    # Spans the y-axis fully
+            y_stripe = np.array([stripe_coord, stripe_coord])  # Only a portion of the x-axis
+            z_stripe = np.ones((1, 1)) * RPC_heights[hit.rpc]              # Same height (z=60)
+            ax.plot_surface(x_stripe, y_stripe, z_stripe, color='red', alpha=0.9)
+        else:
+            stripe_coord = [hit.channel*distance_per_eta_channel,hit.channel*distance_per_eta_channel+1]
+            x_stripe = np.array([stripe_coord, stripe_coord])  # Only a portion of the x-axis
+            y_stripe = np.array([[0, 0], [dimensions[1], dimensions[1]]])    # Spans the y-axis fully
+            z_stripe = np.ones((1, 1)) * RPC_heights[hit.rpc]              # Same height (z=60)
+            ax.plot_surface(x_stripe, y_stripe, z_stripe, color='red', alpha=0.9)
+
+    reconstructor = proAnubis_Analysis_Tools.Reconstructor([proAnubis_event], 0)
+    reconstructor.populate_hits()
+    cluster = reconstructor.make_cluster()
+    print(cluster)
+    print(cluster)
+    tracks = RTools.reconstruct_timed_Chi2_ByRPC(cluster[0], 3, RPC_excluded=-1)
+    for track in tracks:
+        optimised_centroid, optimised_d, optimised_coords, combinations, Chi2_current, dT, dZ, test_coords = track
+        print(optimised_coords)
+        x,y,z = zip(*optimised_coords)
+        print(x)
+        print(y)
+        print(z)
+        # Plot points with a red connecting line
+        ax.scatter(x, y, z, color='blue', s=20)
+        ax.plot(x, y, z, color='purple', linewidth=2)
+        
+
+    # Set axis labels
+    ax.set_xlabel('φ channels')
+    ax.set_ylabel('η channels')
+    ax.set_zlabel('Z / cm')
+
+    ax.set_xticks([i*distance_per_phi_channel for i in range(0, 65, 8)], labels=[str(i) for i in range(0, 65, 8)])
+    ax.set_yticks([i*distance_per_eta_channel for i in range(0, 33, 4)], labels=[str(i) for i in range(0, 33, 4)])
+    # Set axis limits
+    ax.set_xlim([0, dimensions[1]])
+    ax.set_ylim([0, dimensions[0]])
+    ax.set_zlim([0, 130])
+   
+    plt.show()
+
 """
 def hitHeatMap(eventChunk, evt_num):
     heatMap = np.zeros((32,64))

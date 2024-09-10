@@ -25,7 +25,7 @@ interval = 100 # Set your monitoring chunck size
 order = [[0,1], [1,2], [2,3], [3,4]] # Order what you want to align
 
 
-def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = None, end = None, tdc5 = False):
+def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = None, end = None, tdc5 = False, saves = False):
     if not fReader:
         fReader = rawFileReader.fileReader(dir_path+"data//"+file_name) # load in the classs object    
     processedEvents = 0 # Initialisation
@@ -104,12 +104,13 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
                     tdc5_events = fReader.getTDCFiveEvents()
                     data.append([event_chunk, tdc5_events])
 
-                if counter % 5_000 == 0:
-                    print("Event time:", event_time)
-                    storage = "recovery.pkl"
-                    with open(storage, "wb") as f:
-                        pickle.dump([chunks, time], f)
-                    print("Saved")
+                if saves:
+                    if counter % 5_000 == 0:
+                        print("Event time:", event_time)
+                        storage = "recovery.pkl"
+                        with open(storage, "wb") as f:
+                            pickle.dump([chunks, time], f)
+                        print("Saved")
 
                
                 if end:
@@ -294,7 +295,8 @@ def efficiency(chunks, residual = False, pdf = None):
                 reconstructor.apply_systematic_correction(residEta, residPhi)
             # make_cluster does temporal and spatial coincidence between the stips, and reconstruction is done
             cluster = reconstructor.make_cluster()
-            reconstructor.reconstruct_and_extrapolate(cluster)
+            print(cluster)
+            reconstructor.reconstruct_and_extrapolate(cluster, only_second = True)
     plt.figure(figsize=(10, 6))
     max_eff = []
     for RPC in range(6):

@@ -39,6 +39,7 @@ class Reconstructor():
         self.processedEvents = processsed_event
         self.tol = [i/10 for i in range(100)] if tolerance is None else tolerance
         self.dT = []
+        self.chi2 = []
         self.recon = []
         
         
@@ -112,7 +113,7 @@ class Reconstructor():
         return clustered
     
     
-    def reconstruct_and_extrapolate(self, dataset, chi2_region = [0, 100]):
+    def reconstruct_and_extrapolate(self, dataset, chi2_region = [0, 100], only_second = False):
         # Ensure RPC is a list, even if it's a single integer
         if self.tdcstatus[3] == True:
             for rpc in range(6):
@@ -120,24 +121,29 @@ class Reconstructor():
                     if RTools.count_entries(data) < 100:
                         E_recon = RTools.reconstruct_timed_Chi2_ByRPC(data, 3, rpc) #why is it excluded?
                         if E_recon:
-                            if len(E_recon[2]) >= 5:
-                                if E_recon[4] > chi2_region[0] and E_recon[4] < chi2_region[1]:
-                                    # self.chi2.append(E_recon[4])
-                                    # self.event_of_interest.append(E_recon)
-                                    # Adding this check to see if other 5 RPCs are in reconstructed event.
-                                    # This is necessary to ensure the reconstructed path is accurate.
+                            if only_second and len(E_recon) < 2:
+                                continue
+                            if only_second:
+                                E_recon = [E_recon[1]] #for now take only the first
+                            for track in E_recon:
+                                if len(track[2]) >= 5:
+                                    if track[4] > chi2_region[0] and track[4] < chi2_region[1]:
+                                        self.chi2.append(track[4])
+                                        # self.event_of_interest.append(track)
+                                        # Adding this check to see if other 5 RPCs are in reconstructed event.
+                                        # This is necessary to ensure the reconstructed path is accurate.
 
-                                    muon_coords = RTools.does_muon_hit_RPC(E_recon[0], E_recon[1], rpc)
-                                    if muon_coords:
-                                        self.possible_reconstructions[rpc] += 1
-                                        self.possible_reconstructions_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
-                                        for idx, t in enumerate(self.tol):
-                                            check = RTools.does_RPC_detect_muon(muon_coords, E_recon[7], t)
-                                            if check:
-                                                self.successful_reconstructions[rpc][idx] += 1
-                                                self.successful_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
-                                            else:
-                                                self.failed_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
+                                        muon_coords = RTools.does_muon_hit_RPC(track[0], track[1], rpc)
+                                        if muon_coords:
+                                            self.possible_reconstructions[rpc] += 1
+                                            self.possible_reconstructions_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
+                                            for idx, t in enumerate(self.tol):
+                                                check = RTools.does_RPC_detect_muon(muon_coords, track[7], t)
+                                                if check:
+                                                    self.successful_reconstructions[rpc][idx] += 1
+                                                    self.successful_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
+                                                else:
+                                                    self.failed_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
 
 
     def reconstruct_and_findtof(self, dataset, rpc_comparisons):
@@ -145,6 +151,7 @@ class Reconstructor():
             if RTools.count_entries(data) < 100:
                 E_recon = RTools.reconstruct_timed_Chi2_ByRPC(data, 3, -1, rpc_indicies=rpc_comparisons)
                 if E_recon:
+                    E_recon = E_recon[0]
                     if len(E_recon[2]) >= 6:
                         self.dT.append(E_recon[5])
                         self.recon.append(E_recon)
