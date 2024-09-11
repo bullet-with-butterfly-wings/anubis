@@ -299,7 +299,7 @@ class AtlasAnalyser():
     def match_bcrs(self):
         anubis_pointer = 0
         atlas_pointer = 0
-        time_window = 1#89e-6
+        time_window = 89e-6
         self.matches = []
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):

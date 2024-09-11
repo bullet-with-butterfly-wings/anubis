@@ -5,6 +5,7 @@ import numpy as np
 import  os
 import glob
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 # Add the directories to the sys.path
 dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//" # insert your directory path
 sys.path.append(dir_path + "Osiris//processing//python")
@@ -97,7 +98,7 @@ def hitHeatMap(event): #actually returns 6 heatmaps, one for each rpc
                     heatMaps[hit.rpc][:,hit.channel] += np.ones(32)
     return heatMaps
 
-def event_3d_plot(proAnubis_event):
+def event_3d_plot(proAnubis_event, title, save=False):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
@@ -106,7 +107,6 @@ def event_3d_plot(proAnubis_event):
     distance_per_phi_channel = 2.7625 #cm
     distance_per_eta_channel = 2.9844 #cm
     dimensions = [distance_per_phi_channel*64, distance_per_eta_channel*32]
-    print(dimensions)
     x = np.array([0, dimensions[0]])
     y = np.array([0, dimensions[1]])
     X, Y = np.meshgrid(x, y)
@@ -123,33 +123,37 @@ def event_3d_plot(proAnubis_event):
             _, hit = ATools.tdcChanToRPCHit(word, tdc, 0)
             hits.append(hit)
 
+    colours = ['orange', "red"]
     for hit in hits:
+        col = colours[int(175 < hit.time < 350)]
         if hit.eta: #eta
-            stripe_coord = [hit.channel*distance_per_phi_channel,hit.channel*distance_per_phi_channel+1]
+            stripe_coord = [hit.channel*distance_per_eta_channel,hit.channel*distance_per_eta_channel+1]
             x_stripe = np.array([[0, 0], [dimensions[0], dimensions[0]]])    # Spans the y-axis fully
             y_stripe = np.array([stripe_coord, stripe_coord])  # Only a portion of the x-axis
             z_stripe = np.ones((1, 1)) * RPC_heights[hit.rpc]              # Same height (z=60)
-            ax.plot_surface(x_stripe, y_stripe, z_stripe, color='red', alpha=0.9)
+            ax.plot_surface(x_stripe, y_stripe, z_stripe, color=col, alpha=0.9)
         else:
-            stripe_coord = [hit.channel*distance_per_eta_channel,hit.channel*distance_per_eta_channel+1]
+            stripe_coord = [hit.channel*distance_per_phi_channel,hit.channel*distance_per_phi_channel+1]
             x_stripe = np.array([stripe_coord, stripe_coord])  # Only a portion of the x-axis
             y_stripe = np.array([[0, 0], [dimensions[1], dimensions[1]]])    # Spans the y-axis fully
             z_stripe = np.ones((1, 1)) * RPC_heights[hit.rpc]              # Same height (z=60)
-            ax.plot_surface(x_stripe, y_stripe, z_stripe, color='red', alpha=0.9)
+            ax.plot_surface(x_stripe, y_stripe, z_stripe, color=col, alpha=0.9)
 
     reconstructor = proAnubis_Analysis_Tools.Reconstructor([proAnubis_event], 0)
     reconstructor.populate_hits()
     cluster = reconstructor.make_cluster()
-    print(cluster)
-    print(cluster)
     tracks = RTools.reconstruct_timed_Chi2_ByRPC(cluster[0], 3, RPC_excluded=-1)
     for track in tracks:
         optimised_centroid, optimised_d, optimised_coords, combinations, Chi2_current, dT, dZ, test_coords = track
-        print(optimised_coords)
-        x,y,z = zip(*optimised_coords)
-        print(x)
-        print(y)
-        print(z)
+        x = []
+        y = []
+        z = []
+        for rpc, height in enumerate(RPC_heights):
+            t = (height-optimised_centroid[2])/optimised_d[2]
+            x = np.append(x, optimised_centroid[0] + optimised_d[0]*t)
+            y = np.append(y, optimised_centroid[1] + optimised_d[1]*t)
+            z = np.append(z, height)
+        y = [dimensions[1] - i for i in y]
         # Plot points with a red connecting line
         ax.scatter(x, y, z, color='blue', s=20)
         ax.plot(x, y, z, color='purple', linewidth=2)
@@ -160,15 +164,23 @@ def event_3d_plot(proAnubis_event):
     ax.set_ylabel('η channels')
     ax.set_zlabel('Z / cm')
 
-    ax.set_xticks([i*distance_per_phi_channel for i in range(0, 65, 8)], labels=[str(i) for i in range(0, 65, 8)])
-    ax.set_yticks([i*distance_per_eta_channel for i in range(0, 33, 4)], labels=[str(i) for i in range(0, 33, 4)])
-    # Set axis limits
-    ax.set_xlim([0, dimensions[1]])
-    ax.set_ylim([0, dimensions[0]])
-    ax.set_zlim([0, 130])
-   
-    plt.show()
 
+    ax.set_xticks([i*distance_per_phi_channel for i in range(0, 65, 8)], labels=[str(i) for i in range(0, 65, 8)])
+    ax.set_yticks([i*distance_per_eta_channel for i in range(0, 33, 8)], labels=[str(i) for i in range(0, 33, 8)])
+    # Set axis limits
+    ax.set_xlim(0, dimensions[0])
+    ax.set_ylim(0, dimensions[1])
+    ax.set_title(title)
+    ax.get_proj = lambda: np.dot(Axes3D.get_proj(ax), np.diag([1, dimensions[1]/dimensions[0], 1, 1]))
+    ax.autoscale()
+    ax.view_init(elev=30, azim=-130)
+    ax.invert_yaxis()
+    ax.set_zlim(0, 130)
+    
+    if save:
+        plt.savefig("video//images_video//"+title+".png")
+    else:
+        plt.show()
 """
 def hitHeatMap(eventChunk, evt_num):
     heatMap = np.zeros((32,64))
