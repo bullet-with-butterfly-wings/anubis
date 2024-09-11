@@ -44,7 +44,7 @@ class Reconstructor():
         
         
         
-        self.possible_reconstructions = [0 for rppc in range(6)]
+        self.possible_reconstructions = [0 for rpc in range(6)]
         self.successful_reconstructions = [[0 for i in range(len(self.tol))] for rpc in range(6)]
         self.successful_reconstructed_coords = {0:[[0 for etchan in range(32)] for phchan in range(64)],
                 1:[[0 for etchan in range(32)] for phchan in range(64)], 

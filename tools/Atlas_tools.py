@@ -299,15 +299,28 @@ class AtlasAnalyser():
     def match_bcrs(self):
         anubis_pointer = 0
         atlas_pointer = 0
-        time_window = 89e-6
+        time_window = 5e-3
         self.matches = []
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):
                 hit_time = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
                 self.matches.append([self.atlas_data.iloc[atlas_pointer].to_dict(), []])
                 i = anubis_pointer 
+                if atlas_pointer >= 34705:
+                    self.print_bcr(i-4, i+4)
+                    print("Atlas",hit_time)
+                    print(self.atlas_data.iloc[atlas_pointer-1]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer-1]["TimeStampNS"]*1e-9)
                 while i < len(self.anubis_data):
                     bcr = self.anubis_data[i]
+                    if atlas_pointer >= 34705:
+                        print("New")
+                        print(i)
+                        print(bcr.timeStamp)
+                        print(hit_time)
+                        print("In:",abs(bcr.timeStamp - hit_time) < time_window)
+                        print("High:",bcr.timeStamp > hit_time + time_window)
+                        print("Low:", bcr.timeStamp < hit_time - time_window)
+                        return self.matches
                     if bcr.timeStamp < hit_time - time_window:
                         """
                         anubis_pointer = self.anubis_data.index(bcr)
@@ -316,16 +329,24 @@ class AtlasAnalyser():
                         """
                         anubis_pointer = self.binary_search(anubis_pointer, hit_time, time_window)
                         i = anubis_pointer          
+                        if atlas_pointer >= 34705:
+                            print(i)
                         bcr = self.anubis_data[i-1]
                         if abs(bcr.timeStamp - hit_time) < time_window and not bcr.error:
                             for trigger in bcr.triggers:
+                                if atlas_pointer >= 34705:
+                                    print(trigger)
                                 self.matches[atlas_pointer][-1].append(trigger)
+                        if atlas_pointer >= 34705:
+                            print("Done")
                     elif abs(bcr.timeStamp - hit_time) < time_window:
                         if not bcr.error:
                             for trigger in bcr.triggers:                            #if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
                                 self.matches[atlas_pointer][-1].append(trigger)
                         i += 1
                     elif bcr.timeStamp > hit_time + time_window:
+                        if atlas_pointer >= 34705:
+                            print("Break")
                         break
                 pbar.update(1)
         return self.matches

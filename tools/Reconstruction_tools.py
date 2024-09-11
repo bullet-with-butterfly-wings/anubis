@@ -436,7 +436,7 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
     #If fail, print reconstruction failed.
     something = True
     tracks = []
-
+    possible_tracks = []
     while something:
         combinations = generate_hit_coords_combo_Chi2(coords,RPC_heights)
         Chi2_current = np.inf
@@ -446,9 +446,12 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
         dT = [None]
 
         for ind,combo in enumerate(combinations):
+            print(combo)
             if len(combo) < 5:
                 continue
             centroid, d, Chi2, coordinates, delta_T, delta_Z= fit_event_chi2(combo, rpc_indicies = rpc_indicies)
+            if Chi2 < max_Chi2:
+                possible_tracks.append([centroid, d, coordinates, combo, Chi2, delta_T, delta_Z])
             if Chi2 < Chi2_current:
 
                 # If new fit is better than old then replace old fit properties.
@@ -839,5 +842,3 @@ def compile_and_plot_tof_chunk(dTs, rpc_indicies=[[0,1], [0,2], [0,3], [0,4], [0
     return pdf_filename
 
 
-def find_double_particles():
-    pass
