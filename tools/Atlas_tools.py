@@ -23,6 +23,8 @@ import gc
 importlib.reload(RTools)
 importlib.reload(TTools)
 
+dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//data//" # insert your directory path
+
 #scp -o "ProxyJump jd2052@gw.hep.phy.cam.ac.uk" jd2052@pcls.hep.phy.cam.ac.uk:/r04/atlas/revering/data/24_07/24_07_30/proAnubis_240730_2017.raw C:\Users\jony\Downloads
 def readTimeStamp(timestamp):
         return datetime.datetime.fromtimestamp(timestamp)
@@ -214,7 +216,8 @@ class AtlasAnalyser():
            
             elif tdcChannel == trigger_channel:
                 if not current_bcr: #corresponds to the last BCR
-                    self.anubis_data[-1].add_trigger(Trigger(tdcHitTime))
+                    if self.anubis_data:
+                        self.anubis_data[-1].add_trigger(Trigger(tdcHitTime))
                     continue
                 if not current_bcr.triggers:
                     current_bcr.add_trigger(Trigger(tdcHitTime))
@@ -227,49 +230,45 @@ class AtlasAnalyser():
         a = current_bcr.hitTime if current_bcr else previous_last_bcr
         return  tdcEvent[0], a#current_bcr.hitTime
    
-    def get_tdc5_data(self,file, trigger_channel, bcr_channel = 0, amount_of_events=100, from_bcr = False):
+    def get_tdc5_data(self, file_name, trigger_channel, bcr_channel = 0, amount_of_events=100):
         initial_time = None
         previous_event_time = None
-        fromPKL = (file[-4:] == ".pkl")
-        if from_bcr: #everything is already in the file
-            with open(file, 'rb') as inp:
-                self.anubis_data = pickle.load(inp)
-            return self.anubis_data[:amount_of_events]
+        fromPKL = (file_name[-4:] == ".pkl")
         if fromPKL:
-            with open(file, 'rb') as inp:
+            with open(file_name, 'rb') as inp:
                 tdc5Events = pickle.load(inp)
         else:
-            if not self.fReader or self.anubis_file != file: 
+            if not self.fReader or self.anubis_file != file_name: 
                 print("New")
-                self.fReader = rawFileReader.fileReader(file)
-                self.anubis_file = file
+                self.fReader = rawFileReader.fileReader(dir_path+file_name)
+                self.anubis_file = file_name
     
-        with tqdm(total=amount_of_events, desc=f"Reading", unit="Events") as pbar: 
-            i = 0     
-            while i < amount_of_events:
-                if not fromPKL:
-                    if not self.fReader.readBlock():
-                        raise EOFError("You have reached the end of the file")
-                    
-                    if(self.fReader.hasEvents()):
-                        tdc5Reads = self.fReader.getTDCFiveEvents()
-                        if not tdc5Reads:
-                            continue
-                    else:
+        i = 0     
+        while i < amount_of_events:
+            if not fromPKL:
+                if not self.fReader.readBlock():
+                    raise EOFError("You have reached the end of the file")
+                
+                if(self.fReader.hasEvents()):
+                    tdc5Reads = self.fReader.getTDCFiveEvents()
+                    if not tdc5Reads:
                         continue
+                    else:
+                        tdc5Reads = tdc5Reads[0]
                 else:
-                    tdc5Reads = tdc5Events[i]
-                    
-                if i == 0:
-                    initial_time = tdc5Reads[0]
-                    previous_event_time = tdc5Reads[0]
-                    previous_last_bcr = 620958 #the ambiguity
-                    i += 1
                     continue
+            else:
+                tdc5Reads = tdc5Events[i]
+                
+            if i == 0:
+                initial_time = tdc5Reads[0]
+                previous_event_time = tdc5Reads[0]
+                previous_last_bcr = 620958 #the ambiguity
                 i += 1
-                previous_event_time, previous_last_bcr = self._reading_routine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time, previous_last_bcr)
-                pbar.update(1)
-            #print(previous_event_time)
+                continue
+            i += 1
+            previous_event_time, previous_last_bcr = self._reading_routine(tdc5Reads, trigger_channel, bcr_channel, previous_event_time, previous_last_bcr)
+        #print(previous_event_time)
         return self.anubis_data
 
 
@@ -280,8 +279,8 @@ class AtlasAnalyser():
         feats = [branch.name for branch in anaTree.branches]
         evtArr = anaTree.arrays(feats,library="pd")
         self.atlas_data = evtArr
-
         self.atlas_data = self.atlas_data.sort_values(by=["TimeStamp", "TimeStampNS"])
+        self.atlas_data["TimeStamp"] = self.atlas_data["TimeStamp"] - 3600
         return self.atlas_data
     
     #check
@@ -299,55 +298,30 @@ class AtlasAnalyser():
     def match_bcrs(self):
         anubis_pointer = 0
         atlas_pointer = 0
-        time_window = 5e-3
+        time_window = 100e-6
         self.matches = []
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):
                 hit_time = self.atlas_data.iloc[atlas_pointer]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer]["TimeStampNS"]*1e-9
                 self.matches.append([self.atlas_data.iloc[atlas_pointer].to_dict(), []])
                 i = anubis_pointer 
-                if atlas_pointer >= 34705:
-                    self.print_bcr(i-4, i+4)
-                    print("Atlas",hit_time)
-                    print(self.atlas_data.iloc[atlas_pointer-1]["TimeStamp"]+self.atlas_data.iloc[atlas_pointer-1]["TimeStampNS"]*1e-9)
                 while i < len(self.anubis_data):
                     bcr = self.anubis_data[i]
-                    if atlas_pointer >= 34705:
-                        print("New")
-                        print(i)
-                        print(bcr.timeStamp)
-                        print(hit_time)
-                        print("In:",abs(bcr.timeStamp - hit_time) < time_window)
-                        print("High:",bcr.timeStamp > hit_time + time_window)
-                        print("Low:", bcr.timeStamp < hit_time - time_window)
-                        return self.matches
                     if bcr.timeStamp < hit_time - time_window:
-                        """
-                        anubis_pointer = self.anubis_data.index(bcr)
-                        i += 1
-                    if bcr.timeStamp < hit_time - 10*time_window: #if it is too far away do binary search
-                        """
                         anubis_pointer = self.binary_search(anubis_pointer, hit_time, time_window)
                         i = anubis_pointer          
-                        if atlas_pointer >= 34705:
-                            print(i)
                         bcr = self.anubis_data[i-1]
-                        if abs(bcr.timeStamp - hit_time) < time_window and not bcr.error:
+                        if abs(bcr.timeStamp - hit_time) <= time_window and not bcr.error:
                             for trigger in bcr.triggers:
-                                if atlas_pointer >= 34705:
-                                    print(trigger)
                                 self.matches[atlas_pointer][-1].append(trigger)
-                        if atlas_pointer >= 34705:
-                            print("Done")
-                    elif abs(bcr.timeStamp - hit_time) < time_window:
+                    elif bcr.timeStamp > hit_time + time_window:
+                        break
+                    else:
                         if not bcr.error:
                             for trigger in bcr.triggers:                            #if abs(trigger.bcId - self.atlas_data.iloc[atlas_pointer]["BCID"]) < 20:
                                 self.matches[atlas_pointer][-1].append(trigger)
                         i += 1
-                    elif bcr.timeStamp > hit_time + time_window:
-                        if atlas_pointer >= 34705:
-                            print("Break")
-                        break
+                    
                 pbar.update(1)
         return self.matches
     
@@ -390,11 +364,14 @@ def positionn_filter_atlas(data, eta_func, phi_func):
             pbar.update(1)
     data = data.iloc[good_indices]
     return data
+
 def beam_luminosity(data, plot = True):
     #beam luminosity
     times = data["TimeStamp"]
-    hist, bins = np.histogram(times, bins=100)
+    hist, bins = np.histogram(times, bins=1000)
     plt.plot(bins[:-1], hist)
+    plt.title("ATLAS 'Event Rate'")
+    plt.xlabel("TimeStamp", loc = "center")
     plt.show()
 
 def eta_distribution(data, plot = True): #returns a list of etas
@@ -411,6 +388,8 @@ def eta_distribution(data, plot = True): #returns a list of etas
         plt.hist(hist_eta, bins=100, density=True)
         plt.show()
     return hist_eta
+
+
 
 """
 # set the times
@@ -463,6 +442,64 @@ def convert_matches(matches, best_offset):
                 break
     return times, eta, phi, heatmaps
 
+
+def trigger_rates(file_name, start, end, plot = True):
+    trigger_rates = []
+    time = []
+    triggers = []
+    start = datetime.datetime.strptime(start, '%Y-%m-%d %H:%M:%S')
+    end = datetime.datetime.strptime(end, '%Y-%m-%d %H:%M:%S')
+    analyser = AtlasAnalyser()
+    analyser.get_tdc5_data(file_name, 4, 2, amount_of_events=1_000)
+    initial_time = analyser.anubis_data[0].event_time
+    event_time = initial_time
+    print("Starting point:", initial_time)
+    with tqdm(total=round((start-initial_time).total_seconds()), desc=f"Skipping {file_name}", unit='tdc5 Reads') as pbar:
+        while event_time < start:
+            analyser.fReader.skip_events(2_00)
+            event_time = None
+            while not event_time:
+                if not analyser.fReader.readBlock():
+                        print("End of file")
+                        #raise EOFError("You have reached the end of the file")
+                        return trigger_rates, time
+                if analyser.fReader.hasEvents():
+                    tdc5Reads = analyser.fReader.getTDCFiveEvents()
+                    if not tdc5Reads:
+                        continue
+                    else:
+                        event_time = tdc5Reads[0][0]
+                        pbar.update(round(event_time.timestamp()-pbar.n - initial_time.timestamp()))
+    analyser.anubis_data = []
+    with tqdm(total=round((start-end).total_seconds()), desc=f"Reading {file_name}", unit='tdc5 Reads') as pbar:        
+        while event_time < end:
+            analyser.get_tdc5_data(file_name, 4, 2, amount_of_events=100)
+            event_time = analyser.anubis_data[-1].event_time
+            pbar.update(round(event_time.timestamp()-pbar.n - start.timestamp()))
+            for bcr in analyser.anubis_data:
+                for trigger in bcr.triggers:
+                    triggers.append(trigger.timeStamp)
+            
+            #trigger_count = sum([len(bcr.triggers) for bcr in analyser.anubis_data])/(analyser.anubis_data[-1].event_time-analyser.anubis_data[0].event_time).total_seconds()
+            #trigger_rates.append(trigger_count)
+            #time.append(datetime.datetime.timestamp(analyser.anubis_data[-1].event_time))
+            analyser.anubis_data = []
+            analyser.fReader.skip_events(20_000)
+                                
+                
+    if plot:
+        plt.plot(time, trigger_rates, linestyle='solid', label=f"{file_name}")
+        plt.xlabel("Date")
+        plt.ylim(0, 8000)
+        plt.legend()
+        plt.ylabel("Trigger Rates (Hz)")
+        plt.xticks(time[0::100], [d for d in time[0::100]])
+        plt.title(f"Triggers Rates for ({start} - {end})")
+        plt.show()                    
+    return triggers
+                    
+            
+        
 """
 # Define the step sizes for x and y
 phi_step = 0.1  # Step size for x-axis
