@@ -354,8 +354,27 @@ class Timing_Analyser():
                     self.totDiffs[rpc][minPhiHit.channel][minEtaHit.channel] = self.totDiffs[rpc][minPhiHit.channel][minEtaHit.channel]+minEtaHit.time-minPhiHit.time
                     self.nDiffs[rpc][minPhiHit.channel][minEtaHit.channel] = self.nDiffs[rpc][minPhiHit.channel][minEtaHit.channel]+1
                     self.diffHists[rpc][minPhiHit.channel][minEtaHit.channel].fill(minEtaHit.time-minPhiHit.time)
-
     
+    def calculate_correction_stats(self): #
+        def gaus(x,a,x0,sigma):
+            return a*np.exp(-(x-x0)**2/(2*sigma**2))
+        results = [[[[13,5] for eta in range(32)] for phi in range(64)] for rpc in range(6)]
+        for rpc in range(6):
+            for phi in range(64):
+                print(phi)
+                for eta in range(32):
+                    if not self.diffHists[rpc][phi][eta]:
+                        print("Problem")
+                    try:
+                        ppar, pcov = curve_fit(gaus, self.diffHists[rpc][phi][eta].axes.centers[0],self.diffHists[rpc][phi][eta].values(),p0=[1,13,5])
+                    except:
+                        print(self.diffHists[rpc][phi][eta])
+                    x_0 = ppar[0]
+                    std = ppar[1]
+                    results[rpc][phi][eta] = [x_0, std]
+        return results
+
+    #so focking unsuable
     def Calculate_Residual_and_plot_TDC_Time_Diffs(self, pdf_filename='plots.pdf', max_itr=1):
         badPhi = {0: [], 1: [], 2: [31], 3: [0], 4: [19], 5: [31]}
         badEta = {0: [29, 30, 31], 1: [16, 20], 2: [], 3: [20, 31], 4: [], 5: []}

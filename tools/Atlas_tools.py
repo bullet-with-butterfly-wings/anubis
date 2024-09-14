@@ -135,9 +135,31 @@ class AtlasAnalyser():
         print("Error rate:", sum([bcr.error*1 for bcr in self.anubis_data])/len(self.anubis_data))
         return self.anubis_data
 
+    def trigger_rates(self):
+        trigger_rates = []
+        times = []
+        time_interval = 20
+        bcr_index = 0
+        event_time = self.anubis_data[0].timeStamp
+        
+        while bcr_index < len(self.anubis_data):
+            trigger_count = 0
+            previous_time = event_time
+ 
+            while time_interval > event_time - previous_time:
+                if bcr_index < len(self.anubis_data):
+                    current_bcr = self.anubis_data[bcr_index] 
+                else:
+                    break
+                trigger_count += len(current_bcr.triggers)
+                event_time = current_bcr.timeStamp
+                bcr_index += 1
 
+            times.append(previous_time)
+            trigger_rates.append(trigger_count/(event_time-previous_time))
 
-
+        return trigger_rates, times 
+    
     def correction_bcr_routine(self, bcrs):
         last = 0
         current = 0
@@ -280,7 +302,7 @@ class AtlasAnalyser():
         evtArr = anaTree.arrays(feats,library="pd")
         self.atlas_data = evtArr
         self.atlas_data = self.atlas_data.sort_values(by=["TimeStamp", "TimeStampNS"])
-        self.atlas_data["TimeStamp"] = self.atlas_data["TimeStamp"] - 3600
+        #self.atlas_data["TimeStamp"] = self.atlas_data["TimeStamp"]-3600
         return self.atlas_data
     
     #check
