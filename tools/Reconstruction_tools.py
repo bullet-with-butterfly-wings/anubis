@@ -14,6 +14,25 @@ import scipy.optimize as opt
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
+
+#time of flight, angles, 
+class Track():
+    def __init__(self):
+        self.centroid = None
+        self.direction = None
+        self.coordinates = None
+        self.combinations = None
+        self.Chi2 = None
+        self.dT = None
+        self.dZ = None
+        self.test_coords = None
+
+class Cluster():
+    def __init__(self):
+        self.event_num = None
+        self.time_bin = None
+        self.hits = None
+
 def find_tof_time(eta, phi, slope = 0.05426554612593516, offSet = 15.8797407836404):
     if (len(set([eta.eta, phi.eta])) == 1):
         return 0
@@ -191,7 +210,7 @@ def extract_coords_timed_Chi2(event,max_cluster_size):
 
             coords.append([x_coords, y_coords])
 
-        else:
+        else: #I should think about this
             coords.append([[],[],"N"])
 
     #[x_coords] = [[x,err_x,x_time],...]
@@ -227,6 +246,8 @@ def generate_hit_coords_combo_Chi2(coords, RPC_heights, max_length=None, exact_l
     for x in x_values:
         for y in y_values:
             if x is not None and y is not None and isinstance(x[0], (int, float)) and isinstance(y[0], (int, float)):
+                #i think the logic goes here
+                
                 hit_coords.append([x, y, RPC_heights[depth]])
                 generate_hit_coords_combo_Chi2(coords, RPC_heights, max_length, exact_length, combinations, hit_coords, depth + 1)
                 hit_coords.pop()
@@ -390,6 +411,11 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
 
     #Extract x and y coords of cluster in event
     coords = extract_coords_timed_Chi2(event,max_cluster_size)
+    #[x_coords] = [[x,err_x,x_time],...]
+    
+    #RPC_coords = [x_coords,y_coords]
+
+    #coords = [[RPC1_coords],[RPC2_coords],[RPC3_coords],...]
     test_coords = -1
 
     # Filter out coords of RPC under test 
@@ -437,6 +463,7 @@ def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indic
     something = True
     tracks = []
     possible_tracks = []
+
     while something:
         combinations = generate_hit_coords_combo_Chi2(coords,RPC_heights)
         Chi2_current = np.inf

@@ -83,7 +83,7 @@ class Reconstructor():
                 if event.tdcEvents[tdc].qual != 0:
                     skip_event = True
                     break 
-            skip_event = False
+            
             if skip_event:
                 continue 
             for tdc in range(5):
@@ -106,44 +106,36 @@ class Reconstructor():
     
     def make_cluster(self):
         coincident_hits = RTools.FindCoincidentHits(self.etaHits, self.phiHits, self.window_size, tof_correction=self.tof_correction)
-        for i in range(len(coincident_hits)):
-            pass
-            #print(coincident_hits[i][2])
         clustered = RTools.cluster(coincident_hits)
         return clustered
     
-    
     def reconstruct_and_extrapolate(self, dataset, chi2_region = [0, 100], only_second = False):
         # Ensure RPC is a list, even if it's a single integer
-        if self.tdcstatus[3] == True:
+        for i, data in enumerate(dataset):
             for rpc in range(6):
-                for i, data in enumerate(dataset):
-                    if RTools.count_entries(data) < 100:
-                        E_recon = RTools.reconstruct_timed_Chi2_ByRPC(data, 3, rpc) #why is it excluded?
-                        if E_recon:
-                            if only_second and len(E_recon) < 2:
-                                continue
-                            if only_second:
-                                E_recon = [E_recon[1]] #for now take only the first
-                            for track in E_recon:
-                                if len(track[2]) >= 5:
-                                    if track[4] > chi2_region[0] and track[4] < chi2_region[1]:
-                                        self.chi2.append(track[4])
-                                        # self.event_of_interest.append(track)
-                                        # Adding this check to see if other 5 RPCs are in reconstructed event.
-                                        # This is necessary to ensure the reconstructed path is accurate.
+                if RTools.count_entries(data) < 100:
+                    E_recon = RTools.reconstruct_timed_Chi2_ByRPC(data, 3, rpc) #why is it excluded?
+                    if E_recon:
+                        E_recon = [E_recon] #for now take only the first
+                        for track in E_recon:
+                            if len(track[2]) >= 5:
+                                if track[4] > chi2_region[0] and track[4] < chi2_region[1]:
+                                    self.chi2.append(track[4])
+                                    # self.event_of_interest.append(track)
+                                    # Adding this check to see if other 5 RPCs are in reconstructed event.
+                                    # This is necessary to ensure the reconstructed path is accurate.
 
-                                        muon_coords = RTools.does_muon_hit_RPC(track[0], track[1], rpc)
-                                        if muon_coords:
-                                            self.possible_reconstructions[rpc] += 1
-                                            self.possible_reconstructions_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
-                                            for idx, t in enumerate(self.tol):
-                                                check = RTools.does_RPC_detect_muon(muon_coords, track[7], t)
-                                                if check:
-                                                    self.successful_reconstructions[rpc][idx] += 1
-                                                    self.successful_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
-                                                else:
-                                                    self.failed_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
+                                    muon_coords = RTools.does_muon_hit_RPC(track[0], track[1], rpc)
+                                    if muon_coords:
+                                        self.possible_reconstructions[rpc] += 1
+                                        self.possible_reconstructions_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
+                                        for idx, t in enumerate(self.tol):
+                                            check = RTools.does_RPC_detect_muon(muon_coords, track[7], t)
+                                            if check:
+                                                self.successful_reconstructions[rpc][idx] += 1
+                                                self.successful_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
+                                            else:
+                                                self.failed_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
 
 
     def reconstruct_and_findtof(self, dataset, rpc_comparisons):
@@ -274,7 +266,7 @@ class Reconstructor():
             fig, ax = plt.subplots(1, figsize=(16, 8), dpi=100)
             etachannels = [x-0.5 for x in range(33)]
             phichannels = [x-0.5 for x in range(65)]
-            etaHist = (scDiffs,np.array(phichannels),np.array(etachannels))
+            etaHist = (scDiffs, np.array(phichannels), np.array(etachannels))
             zrange = [-20,30]
             thisHist = hep.hist2dplot(etaHist,norm=colors.Normalize(zrange[0],zrange[1]))
             thisHist.cbar.set_label('tof with 0 as reference', rotation=270, y=0.1,labelpad=23)
@@ -293,6 +285,10 @@ class Reconstructor():
             plt.show()
     
 
+
+
+
+
         
         
 class Timing_Analyser():
@@ -300,18 +296,8 @@ class Timing_Analyser():
                  scDiffs = None, normDiffs = None):
         self.event_chunk = event_chunk
         self.processed_event = processsed_event
-        self.totDiffs = {0:[[0 for etchan in range(32)] for phchan in range(64)],
-                1:[[0 for etchan in range(32)] for phchan in range(64)], 
-                2:[[0 for etchan in range(32)] for phchan in range(64)], 
-                3:[[0 for etchan in range(32)] for phchan in range(64)],
-                4:[[0 for etchan in range(32)] for phchan in range(64)],
-                5:[[0 for etchan in range(32)] for phchan in range(64)]}
-        self.nDiffs = {0:[[0 for etchan in range(32)] for phchan in range(64)],
-                    1:[[0 for etchan in range(32)] for phchan in range(64)], 
-                    2:[[0 for etchan in range(32)] for phchan in range(64)], 
-                    3:[[0 for etchan in range(32)] for phchan in range(64)],
-                    4:[[0 for etchan in range(32)] for phchan in range(64)],
-                    5:[[0 for etchan in range(32)] for phchan in range(64)]}
+        self.tot_mean = [[[13.0 for eta in range(32)] for phi in range(64)] for rpc in range(6)]
+        self.tot_std = [[[1.0 for eta in range(32)] for phi in range(64)] for rpc in range(6)]
         if diffHists:
             self.diffHists = diffHists
         else:
@@ -321,7 +307,7 @@ class Timing_Analyser():
                         3:[[hi.Hist(hi.axis.Regular(bins=376, start=-150.4, stop=150.4, name="rpc3etPhiDiff")) for etchan in range(32)] for phchan in range(64)],
                         4:[[hi.Hist(hi.axis.Regular(bins=376, start=-150.4, stop=150.4, name="rpc4etPhiDiff")) for etchan in range(32)] for phchan in range(64)],
                         5:[[hi.Hist(hi.axis.Regular(bins=376, start=-150.4, stop=150.4, name="rpc5etPhiDiff")) for etchan in range(32)] for phchan in range(64)]}
-        if scDiffs == None:
+        if scDiffs == None: #please erase
             self.scDiffs = [[0 for etchan in range(32)] for phchan in range(64)]
             self.normDiffs = [[0 for etchan in range(32)] for phchan in range(64)]
         else:
@@ -351,30 +337,23 @@ class Timing_Analyser():
                         elif hit.time<minPhiHit.time and not hit.eta:
                             minPhiHit = hit
                 if minEtaHit.channel>-0.5 and minPhiHit.channel>-0.5:
-                    self.totDiffs[rpc][minPhiHit.channel][minEtaHit.channel] = self.totDiffs[rpc][minPhiHit.channel][minEtaHit.channel]+minEtaHit.time-minPhiHit.time
-                    self.nDiffs[rpc][minPhiHit.channel][minEtaHit.channel] = self.nDiffs[rpc][minPhiHit.channel][minEtaHit.channel]+1
                     self.diffHists[rpc][minPhiHit.channel][minEtaHit.channel].fill(minEtaHit.time-minPhiHit.time)
     
     def calculate_correction_stats(self): #
         def gaus(x,a,x0,sigma):
             return a*np.exp(-(x-x0)**2/(2*sigma**2))
-        results = [[[[13,5] for eta in range(32)] for phi in range(64)] for rpc in range(6)]
         for rpc in range(6):
             for phi in range(64):
                 print(phi)
                 for eta in range(32):
-                    if not self.diffHists[rpc][phi][eta]:
-                        print("Problem")
-                    try:
+                    if not self.diffHists[rpc][phi][eta].counts() > 3:
                         ppar, pcov = curve_fit(gaus, self.diffHists[rpc][phi][eta].axes.centers[0],self.diffHists[rpc][phi][eta].values(),p0=[1,13,5])
-                    except:
-                        print(self.diffHists[rpc][phi][eta])
-                    x_0 = ppar[0]
-                    std = ppar[1]
-                    results[rpc][phi][eta] = [x_0, std]
-        return results
+                    self.tot_mean[rpc][phi][eta] = ppar[1]
+                    self.tot_std[rpc][phi][eta] = ppar[2]
+        return self.tot_mean, self.tot_std
 
-    #so focking unsuable
+        
+    #so focking unsuable, I will leave it for now
     def Calculate_Residual_and_plot_TDC_Time_Diffs(self, pdf_filename='plots.pdf', max_itr=1):
         badPhi = {0: [], 1: [], 2: [31], 3: [0], 4: [19], 5: [31]}
         badEta = {0: [29, 30, 31], 1: [16, 20], 2: [], 3: [20, 31], 4: [], 5: []}
@@ -389,7 +368,7 @@ class Timing_Analyser():
                 for ph in range(64):
                     for et in range(32):
                         if sum(self.diffHists[rpc][ph][et].counts()) > 0:
-                            self.scDiffs[ph][et] = sum(
+                            self.scDiffs[ph][et] = sum( #mean
                                 [thisVal * self.diffHists[rpc][ph][et].axes.centers[0][idx] for idx, thisVal in
                                 enumerate(self.diffHists[rpc][ph][et])]) / sum(self.diffHists[rpc][ph][et].counts())
                             self.normDiffs[ph][et] = self.scDiffs[ph][et] + slope * (ph - et) - offSet
@@ -513,6 +492,8 @@ class Timing_Analyser():
                 event_counts[event_num] += 1
 
         for event_num, count in event_counts.items():
+            if count > 6:
+                print("WTF")
             if count >= 6:
                 self.count[6].append(event_num)
             else:

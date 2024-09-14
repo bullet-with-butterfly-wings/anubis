@@ -135,7 +135,7 @@ class AtlasAnalyser():
         print("Error rate:", sum([bcr.error*1 for bcr in self.anubis_data])/len(self.anubis_data))
         return self.anubis_data
 
-    def trigger_rates(self):
+    def trigger_rates(self, plot = False):
         trigger_rates = []
         times = []
         time_interval = 20
@@ -158,8 +158,23 @@ class AtlasAnalyser():
             times.append(previous_time)
             trigger_rates.append(trigger_count/(event_time-previous_time))
 
+        if plot:
+            plt.plot(times, trigger_rates)
+            plt.title("Trigger Rates")
+            plt.xlabel("TimeStamp", loc = "center")
+            plt.show()
         return trigger_rates, times 
     
+    def beam_luminosity(self, plot = False):
+        times = self.atlas_data["TimeStamp"]
+        hist, bins = np.histogram(times, bins=1000)
+        if plot:
+            plt.plot(bins[:-1], hist)
+            plt.title("ATLAS 'Event Rate'")
+            plt.xlabel("TimeStamp", loc = "center")
+            plt.show()
+        return hist, bins
+
     def correction_bcr_routine(self, bcrs):
         last = 0
         current = 0
@@ -386,15 +401,6 @@ def positionn_filter_atlas(data, eta_func, phi_func):
             pbar.update(1)
     data = data.iloc[good_indices]
     return data
-
-def beam_luminosity(data, plot = True):
-    #beam luminosity
-    times = data["TimeStamp"]
-    hist, bins = np.histogram(times, bins=1000)
-    plt.plot(bins[:-1], hist)
-    plt.title("ATLAS 'Event Rate'")
-    plt.xlabel("TimeStamp", loc = "center")
-    plt.show()
 
 def eta_distribution(data, plot = True): #returns a list of etas
     hist_eta = []
