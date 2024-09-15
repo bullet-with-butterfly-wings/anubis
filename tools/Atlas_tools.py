@@ -335,7 +335,7 @@ class AtlasAnalyser():
     def match_bcrs(self):
         anubis_pointer = 0
         atlas_pointer = 0
-        time_window = 100e-6
+        time_window = 1 #400e-6
         self.matches = []
         with tqdm(total=len(self.atlas_data), desc=f"Matching", unit='Events') as pbar:        
             for atlas_pointer in range(len(self.atlas_data)):
@@ -451,7 +451,7 @@ def convert_matches(matches, best_offset):
                     heatmaps[anubis_hit][matches[i][0]["BCID"]] += 1
                     #diffs.append(cdf[round(trigger.bcId+best_offset)] - cdf[matches[i][0]["BCID"]])
                     times.append(anubis_hit-matches[i][0]["BCID"])
-                    if abs(anubis_hit-matches[i][0]["BCID"]) < 1:
+                    if abs(anubis_hit-matches[i][0]["BCID"]):
                             eta.extend(mu_eta)
                             phi.extend(mu_phi)        
 

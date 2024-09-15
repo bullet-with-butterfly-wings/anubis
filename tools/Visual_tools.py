@@ -98,7 +98,7 @@ def hitHeatMap(event): #actually returns 6 heatmaps, one for each rpc
                     heatMaps[hit.rpc][:,hit.channel] += np.ones(32)
     return heatMaps
 
-def event_3d_plot(proAnubis_event, title, save=False):
+def event_3d_plot(proAnubis_event, reconstructor, title, save=False):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
@@ -139,12 +139,15 @@ def event_3d_plot(proAnubis_event, title, save=False):
             z_stripe = np.ones((1, 1)) * RPC_heights[hit.rpc]              # Same height (z=60)
             ax.plot_surface(x_stripe, y_stripe, z_stripe, color=col, alpha=0.9)
 
-    reconstructor = proAnubis_Analysis_Tools.Reconstructor([proAnubis_event], 0)
-    reconstructor.populate_hits()
-    cluster = reconstructor.make_cluster()
-    tracks = RTools.reconstruct_timed_Chi2_ByRPC(cluster[0], 3, RPC_excluded=-1)
-    for track in tracks:
-        optimised_centroid, optimised_d, optimised_coords, combinations, Chi2_current, dT, dZ, test_coords = track
+    #reconstructor = RTools.Reconstructor([proAnubis_event], 0)
+    
+    reconstructor.update_event([proAnubis_event], 0)
+    cluster = reconstructor.cluster()
+    tracks = reconstructor.reconstruct_track(cluster)
+
+    for track in tracks[0]:
+        optimised_centroid = track.centroid[1:]
+        optimised_d = track.direction[1:]
         x = []
         y = []
         z = []
@@ -157,11 +160,11 @@ def event_3d_plot(proAnubis_event, title, save=False):
         # Plot points with a red connecting line
         ax.scatter(x, y, z, color='blue', s=20)
         ax.plot(x, y, z, color='purple', linewidth=2)
-        
+    
 
     # Set axis labels
-    ax.set_xlabel('φ channels')
-    ax.set_ylabel('η channels')
+    #ax.set_xlabel('φ channels')
+    #ax.set_ylabel('η channels')
     ax.set_zlabel('Z / cm')
 
 

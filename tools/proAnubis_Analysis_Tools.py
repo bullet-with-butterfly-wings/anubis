@@ -10,24 +10,13 @@ import hist as hi
 import importlib
 #sys.path.insert(1, 'C://Users//Peter//OneDrive - University of Cambridge//Desktop//summer2//Osiris Temp//processing//python')
 sys.path.append(os.path.join(sys.path[0], 'Osiris Temp', 'processing', 'python'))
-import Analysis_tools as ATools
 import Reconstruction_tools as RTools
 import Timing_tools as TTools
 importlib.reload(RTools)
 importlib.reload(TTools)
-rpcHit = ATools.rpcHit
+import Analysis_tools as ATools
 from scipy.optimize import curve_fit
 
-
-class rpcCoincidence():
-    def __init__(self, event_num, time_bin, hits):
-        self.event_num = event_num
-        self.time_bin = time_bin
-        self.hits = hits
-
-    def __str__(self):
-        return f"rpcCoincidence(event_num={self.event_num}, time_bin={self.time_bin}, hits={self.hits})"
-    
 
 class Reconstructor():
     def __init__(self, event_chunk, processsed_event, tolerance = None, coincidence_window = 15, tof_correction = True):
@@ -109,6 +98,7 @@ class Reconstructor():
         clustered = RTools.cluster(coincident_hits)
         return clustered
     
+    #I hate this
     def reconstruct_and_extrapolate(self, dataset, chi2_region = [0, 100], only_second = False):
         # Ensure RPC is a list, even if it's a single integer
         for i, data in enumerate(dataset):
@@ -219,14 +209,7 @@ class Reconstructor():
         self.phi_histogram += np.histogram(angles_phi_degrees, bins=eta_phi_bin_edges)[0]
         self.solid_theta_histogram += np.histogram(angles_solid_theta_degrees, bins=solid_phi_bin_edges)[0]
         self.solid_phi_histogram += np.histogram(angles_solid_phi_degrees, bins=solid_phi_bin_edges)[0]
-        
-    def apply_systematic_correction(self, residEta, residPhi):
-        for rpc in range(6):
-            for i, etahit in enumerate(self.etaHits[rpc]):
-                self.etaHits[rpc][i].time += residEta[rpc][etahit.channel]
-            for j , phihit in enumerate(self.phiHits[rpc]):
-                self.phiHits[rpc][j].time += residPhi[rpc][phihit.channel]
-                
+                    
                 
     def plot_tof_offset(self, rpc_comparison):
         tof = [[] for _ in range(6)]
@@ -301,12 +284,8 @@ class Timing_Analyser():
         if diffHists:
             self.diffHists = diffHists
         else:
-            self.diffHists = {0:[[hi.Hist(hi.axis.Regular(bins=376, start=-150.4, stop=150.4, name="rpc0etPhiDiff")) for etchan in range(32)] for phchan in range(64)],
-                        1:[[hi.Hist(hi.axis.Regular(bins=376, start=-150.4, stop=150.4, name="rpc1etPhiDiff")) for etchan in range(32)] for phchan in range(64)],
-                        2:[[hi.Hist(hi.axis.Regular(bins=376, start=-150.4, stop=150.4, name="rpc2etPhiDiff")) for etchan in range(32)] for phchan in range(64)],
-                        3:[[hi.Hist(hi.axis.Regular(bins=376, start=-150.4, stop=150.4, name="rpc3etPhiDiff")) for etchan in range(32)] for phchan in range(64)],
-                        4:[[hi.Hist(hi.axis.Regular(bins=376, start=-150.4, stop=150.4, name="rpc4etPhiDiff")) for etchan in range(32)] for phchan in range(64)],
-                        5:[[hi.Hist(hi.axis.Regular(bins=376, start=-150.4, stop=150.4, name="rpc5etPhiDiff")) for etchan in range(32)] for phchan in range(64)]}
+            self.diffHists = {i:[[hi.Hist(hi.axis.Regular(bins=150, start=-50, stop=50, name=f"rpc{i}etPhiDiff")) for etchan in range(32)] for phchan in range(64)] for i in range(6)}
+        
         if scDiffs == None: #please erase
             self.scDiffs = [[0 for etchan in range(32)] for phchan in range(64)]
             self.normDiffs = [[0 for etchan in range(32)] for phchan in range(64)]
@@ -324,14 +303,14 @@ class Timing_Analyser():
         self.event_chunk = event_chunk
         self.processedEvents = processed_event
         
-    def readTDCTimeDiffs(self):
+    def read_tot_diffs(self):
         for event in self.event_chunk:
             Hits = TTools.tdcEventToRPCData(event,activeTDCs=[0,1,2,3,4])
-            for rpc in [0,1,2,3,4,5]:
-                minEtaHit = rpcHit(-1,1000,True, self.processed_event, rpc)
-                minPhiHit = rpcHit(-1,1000,False, self.processed_event, rpc)
+            for rpc in range(6):
+                minEtaHit = ATools.rpcHit(-1,1000,True, self.processed_event, rpc)
+                minPhiHit = ATools.rpcHit(-1,1000,False, self.processed_event, rpc)
                 for hit in Hits[rpc]:
-                    if hit.time>150 and hit.time<350:
+                    if 150 < hit.time < 350:
                         if hit.eta and hit.time<minEtaHit.time:
                             minEtaHit = hit
                         elif hit.time<minPhiHit.time and not hit.eta:
@@ -339,18 +318,29 @@ class Timing_Analyser():
                 if minEtaHit.channel>-0.5 and minPhiHit.channel>-0.5:
                     self.diffHists[rpc][minPhiHit.channel][minEtaHit.channel].fill(minEtaHit.time-minPhiHit.time)
     
-    def calculate_correction_stats(self): #
+    def calculate_corrections(self):
         def gaus(x,a,x0,sigma):
             return a*np.exp(-(x-x0)**2/(2*sigma**2))
         for rpc in range(6):
             for phi in range(64):
-                print(phi)
                 for eta in range(32):
-                    if not self.diffHists[rpc][phi][eta].counts() > 3:
-                        ppar, pcov = curve_fit(gaus, self.diffHists[rpc][phi][eta].axes.centers[0],self.diffHists[rpc][phi][eta].values(),p0=[1,13,5])
-                    self.tot_mean[rpc][phi][eta] = ppar[1]
-                    self.tot_std[rpc][phi][eta] = ppar[2]
+                    if sum([1 for value in self.diffHists[rpc][phi][eta].values() if value != 0]) > 3:
+                        try:
+                            ppar, pcov = curve_fit(gaus, self.diffHists[rpc][phi][eta].axes.centers[0], self.diffHists[rpc][phi][eta].values(), p0=[1,13,5])
+                            self.tot_mean[rpc][phi][eta] = ppar[1]
+                            self.tot_std[rpc][phi][eta] = abs(ppar[2])
+                        except:
+                            values = []
+                            for idx, value in enumerate(self.diffHists[rpc][phi][eta].values()):
+                                for i in range(int(value)):
+                                    values.append(self.diffHists[rpc][phi][eta].axes.centers[0][idx])
+                            self.tot_mean[rpc][phi][eta] = np.mean(values)
+                            self.tot_std[rpc][phi][eta] = np.std(values)
+                            
+                            #print(self.diffHists[rpc][phi][eta].values())
+    
         return self.tot_mean, self.tot_std
+
 
         
     #so focking unsuable, I will leave it for now

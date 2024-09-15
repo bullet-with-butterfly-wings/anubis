@@ -519,7 +519,7 @@ def cluster_size(chunks, residual = False, seperate = False):
     if not seperate:
         histograms = []
         for rpc in range(6):
-            histogram.append([phi_histograms[rpc]]+[eta_histograms[rpc]]) # only 6 together
+            histograms.append([phi_histograms[rpc]]+[eta_histograms[rpc]]) # only 6 together
     else:
         histograms = phi_histograms + eta_histograms #first 6 phi, next 6 eta
     histograms = np.array(histograms, dtype=object)

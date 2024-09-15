@@ -6,98 +6,455 @@ hep.style.use([hep.style.ATLAS])
 import sys
 # import ANUBIS_triggered_functions as ANT
 import matplotlib.backends.backend_pdf
+from itertools import product
 import numpy as np
 # from scipy.stats import normpip install pillow
 sys.path.insert(1, 'Osiris Temp\processing\python')
+import Analysis_tools as ATools
 from itertools import groupby
+from itertools import product
 import scipy.optimize as opt
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
+time_range = (150,350)
+RPC_heights = [0.6,1.8,3.0,61.8,121.8,123] #Heights of middle point of each RPC, measured from the bottom of the Triplet Low RPC. Units are cm.
 
 #time of flight, angles, 
 class Track():
-    def __init__(self):
-        self.centroid = None
-        self.direction = None
-        self.coordinates = None
-        self.combinations = None
-        self.Chi2 = None
-        self.dT = None
-        self.dZ = None
-        self.test_coords = None
+    def __init__(self, coordinates, uncertainties):
+        self.coordinates = coordinates #t,x,y,z
+        self.uncertainties = uncertainties #var_t, var_x, var_y
+        self.centroid = np.mean(coordinates, axis=0)
+        self.direction = None #proportional to velocity
+        self.speed = 299792458.0 #m/s
+        self.is_cosmic = False
+        self.chi2 = 100
 
+    def __bool__(self):
+        return True
+    
+    def fit(self):
+        _, _, V = np.linalg.svd(self.coordinates-self.centroid)
+        self.direction = V[0, :]
+        """
+        if self.direction[0] != 0:
+            uncertainty = (self.uncertainties[0][1]*self.direction[1]**2 + self.uncertainties[0][2]*self.direction[2]**2)/np.linalg.norm(self.direction[1:])**4
+            uncertainty += self.uncertainties[0][0]/self.direction[0]**2
+            uncertainty = np.sqrt(uncertainty)
+            
+        """
+        if self.direction[0] != 0:
+            self.speed = np.linalg.norm(self.direction[1:])/self.direction[0]*(32/25*10**7)
+            self.is_cosmic = self.direction[0]/self.direction[3] < 0
+        self.calculate_chi2()   
+
+    def calculate_chi2(self):
+        chi2 = 0
+        i = 0 #degrees of freeedom
+        for idx, point in enumerate(self.coordinates):            
+            i+=3
+            t = (point[3]-self.centroid[3])/self.direction[3] #parameter of the line
+            for degree in range(3):
+                ideal = self.centroid[degree] + t*self.direction[degree]
+                real = point[degree]
+                chi2+= (real-ideal)**2/self.uncertainties[idx][degree] 
+        #check degrees of freedom
+        doF = i - 6
+        self.chi2 = chi2/ doF
+        return self.chi2
+    
+   
+#i do not like passing the whole std_tot
 class Cluster():
-    def __init__(self):
-        self.event_num = None
-        self.time_bin = None
-        self.hits = None
+    def __init__(self, event_num, std_tot, rpc, hits):
+        self.event_num = event_num
+        self.rpc = rpc
+        self.channel_position = [-1, -1]
+        self.time = [0,0]
+        self.coords =  None #[x, y, z]
+        self.var = None #[var_x, var_y, var_z = 0]
+        self.hits = self.add_hits(hits[0], hits[1])
+        self.size = max(len(self.hits[0]), len(self.hits[1]))
+        self.time[1] = std_tot[self.rpc][self.channel_position[0]][self.channel_position[1]]**2
+        self.coords, self.var = self.calculate_coords()
+        
+    def add_hits(self, phi_hits, eta_hits):
+        if phi_hits:
+            first_phi = min(phi_hits, key = lambda hit: hit.time)
+            self.channel_position[0] = first_phi.channel
+        if eta_hits:
+            first_eta = min(eta_hits, key = lambda hit: hit.time)
+            self.channel_position[1] = first_eta.channel
+            self.time = [first_eta.time, 0]
+        return [phi_hits, eta_hits]
+        
+    def calculate_coords(self):
+        if not self.hits[0] or not self.hits[1]:
+            return None
+        
+        distance_per_phi_channel = 2.7625 #cm
+        distance_per_eta_channel = 2.9844 #cm
+        phi_channel, eta_channel = self.channel_position
+        x = (phi_channel + 0.5) * distance_per_phi_channel
+        y = ((31 - eta_channel) + 0.5) * distance_per_eta_channel
+        var_x = (1 * distance_per_phi_channel) ** 2 / 12
+        var_y = (1 * distance_per_eta_channel) ** 2 / 12
+        z = RPC_heights[self.rpc]
+        t = self.time
+        var_t = 1 # let me ponder how to get that value here
+        
+        return [x, y, z], [var_x, var_y, 0]
 
+
+class Reconstructor():
+    def __init__(self, event_chunk, processsed_event, tolerance = None, coincidence_window = 15, tof_correction = True):
+        self.event_chunk = event_chunk
+        self.event_counter = 0
+        self.tracks = []
+        self.etaHits = [[] for rpc in range(6)]
+        self.phiHits = [[] for rpc in range(6)]
+        self.mean_tot = [[[13 for eta in range(32)] for phi in range(64)] for rpc in range(6)]
+        self.std_tot = [[[1 for eta in range(32)] for phi in range(64)] for rpc in range(6)]
+        self.tof_correction = tof_correction
+        self.processedEvents = processsed_event
+        self.tol = [i/10 for i in range(100)] if tolerance is None else tolerance
+        self.dT = []
+        self.cluster_size = [[[],[]] for rpc in range(6)]
+        self.collector = [[] for rpc in range(6)]
+        self.chi2 = []
+        self.recon = []        
+        
+        
+        
+        self.possible_reconstructions = [0 for rpc in range(6)]
+        self.successful_reconstructions = [[0 for i in range(len(self.tol))] for rpc in range(6)]
+        self.successful_reconstructed_coords = {0:[[0 for etchan in range(32)] for phchan in range(64)],
+                1:[[0 for etchan in range(32)] for phchan in range(64)], 
+                2:[[0 for etchan in range(32)] for phchan in range(64)], 
+                3:[[0 for etchan in range(32)] for phchan in range(64)],
+                4:[[0 for etchan in range(32)] for phchan in range(64)],
+                5:[[0 for etchan in range(32)] for phchan in range(64)]}
+        self.failed_reconstructed_coords = {0:[[0 for etchan in range(32)] for phchan in range(64)],
+                1:[[0 for etchan in range(32)] for phchan in range(64)], 
+                2:[[0 for etchan in range(32)] for phchan in range(64)], 
+                3:[[0 for etchan in range(32)] for phchan in range(64)],
+                4:[[0 for etchan in range(32)] for phchan in range(64)],
+                5:[[0 for etchan in range(32)] for phchan in range(64)]}
+        self.possible_reconstructions_coords = {0:[[0 for etchan in range(32)] for phchan in range(64)],
+                1:[[0 for etchan in range(32)] for phchan in range(64)], 
+                2:[[0 for etchan in range(32)] for phchan in range(64)], 
+                3:[[0 for etchan in range(32)] for phchan in range(64)],
+                4:[[0 for etchan in range(32)] for phchan in range(64)],
+                5:[[0 for etchan in range(32)] for phchan in range(64)]}
+        
+        
+        self.eta_histogram = np.zeros(len(np.arange(-90.5, 91.5, 1)) - 1)
+        self.phi_histogram = np.zeros(len(np.arange(-90.5, 91.5, 1)) - 1)
+        self.solid_theta_histogram = np.zeros(len(np.arange(-180.5, 181.5, 1)) - 1)
+        self.solid_phi_histogram = np.zeros(len(np.arange(-180.5, 181.5, 1)) - 1)
+        
+    def populate_hits(self, event):
+        self.etaHits = [[] for rpc in range(6)]
+        self.phiHits = [[] for rpc in range(6)]
+        self.event_counter += 1
+        skip_event = False
+        for tdc in range(5):
+            if event.tdcEvents[tdc].qual != 0:
+                skip_event = True
+                break 
+
+            #if skip_event:
+            #    continue 
+
+            for word in event.tdcEvents[tdc].words:
+                rpc, thisHit = ATools.tdcChanToRPCHit(word,tdc, self.processedEvents + self.event_counter)
+                if thisHit.channel == [0]:
+                    continue
+                if not time_range[0] < thisHit.time < time_range[1]:
+                    continue
+
+                if thisHit.eta:
+                    self.etaHits[rpc].append(thisHit)
+
+                else:
+                    self.phiHits[rpc].append(thisHit)
+                                                 
+    def update_event(self, event_chunk, processed_event):
+        self.event_chunk = event_chunk
+        self.event_counter = 0
+        self.processedEvents = processed_event
+        self.etaHits = [[] for rpc in range(6)]
+        self.phiHits = [[] for rpc in range(6)]
+    
+    
+    def cluster(self, time_window = 5):
+        #slope = 0.05426554612593516
+        #slope = 0.15204446322001586
+        result = [] #[event_num, eta_time, [phi_hits, eta_hits]]
+        for event_num, event in enumerate(self.event_chunk):
+            self.populate_hits(event)
+            event_clusters = []
+            
+            for rpc in range(6):
+                rpc_clusters = []
+                coincident_hits = [[], []]
+
+                
+                for idx, hits in enumerate([self.phiHits[rpc], self.etaHits[rpc]]):    
+                    if hits:
+                        temp_hits = [hits[0]]
+                    else:
+                        continue
+
+                    for i in range(len(hits) - 1):    
+                        if abs(hits[i+1].time - hits[i].time) <= time_window: 
+                        #can it be out of order due to the correction? Probably yes
+                            temp_hits.append(hits[i+1])
+                        elif temp_hits:
+                            first = min(temp_hits, key=lambda x: x.time)
+                            coincident_hits[idx].append([
+                                    first.time,
+                                    first.channel,
+                                    temp_hits
+                                ])
+                            temp_hits = [hits[i+1]]
+                
+                    if temp_hits:
+                        #print([str(x) for x in temp_hits])
+                        first = min(temp_hits, key=lambda x: x.time)
+                        coincident_hits[idx].append([
+                                    first.time,
+                                    first.channel,
+                                    temp_hits
+                                ])
+                        
+                    #position clustering
+                    #print("coincident_hits before", [[str(hit) for hit in temp_cluster[2]] for temp_cluster in coincident_hits[idx]])
+                    for time_clusters in coincident_hits[idx]:
+                        time_clusters[2] = sorted(time_clusters[2], key=lambda x: x.channel)
+                        for i, hit in enumerate(time_clusters[2]):
+                            if i != 0 and abs(hit.channel - previous_channel) > 1:
+                                different_hits = time_clusters[2][i:].copy()
+                                time_clusters[2] = time_clusters[2][:i]
+                                first = min(different_hits, key=lambda x: x.time)
+                                new_time_cluster = [first.time, first.channel, different_hits]
+                                coincident_hits[idx].append(new_time_cluster)
+                                break
+                                #recursion kind of
+                            previous_channel = hit.channel
+                    #print("coincident_hits after", [[str(hit) for hit in temp_cluster[2]] for temp_cluster in coincident_hits[idx]])
+
+                        
+                phi_coincident, eta_coincident = coincident_hits
+                leaderboard = []
+                for (phi_time, phi_channel, phi_hits), (eta_time, eta_channel, eta_hits) in product(phi_coincident, eta_coincident):
+                    time_difference = abs(eta_time - phi_time - self.mean_tot[rpc][phi_channel][eta_channel])/self.std_tot[rpc][phi_channel][eta_channel]
+                    is_time_coincident = abs(time_difference) < 3
+                    if is_time_coincident:
+                        leaderboard.append([time_difference, [phi_hits, eta_hits]])
+
+                leaderboard = sorted(leaderboard, key=lambda x: x[0])
+                original_leaderboard = leaderboard.copy()
+                while leaderboard:
+                    best = leaderboard.pop(0)
+                    phi_hits, eta_hits = best[1]
+                    rpc_clusters.append(Cluster(event_num, self.std_tot, rpc, best[1]))
+                    leaderboard = [combo for combo in leaderboard if not any([hits in combo[1] for hits in [phi_hits, eta_hits]])]
+                event_clusters.append(rpc_clusters)
+            result.append(event_clusters)
+        return result
+
+
+    def reconstruct_track(self, clusters, rpc_excluded = -1):
+        for evt_num, event_clusters in enumerate(clusters):
+            tracks = find_best_track(event_clusters, rpc_excluded)
+            self.tracks.append(tracks) #inlcude event number
+        return self.tracks
+
+
+    #I hate this
+    def reconstruct_and_extrapolate(self, dataset, chi2_region = [0, 100], only_second = False):
+        # Ensure RPC is a list, even if it's a single integer
+        for i, data in enumerate(dataset):
+            for rpc in range(6):
+                if count_entries(data) < 100:
+                    E_recon = reconstruct_timed_Chi2_ByRPC(data, 3, rpc) #why is it excluded?
+                    if E_recon:
+                        E_recon = [E_recon] #for now take only the first
+                        for track in E_recon:
+                            if len(track[2]) >= 5:
+                                if track[4] > chi2_region[0] and track[4] < chi2_region[1]:
+                                    self.chi2.append(track[4])
+                                    # self.event_of_interest.append(track)
+                                    # Adding this check to see if other 5 RPCs are in reconstructed event.
+                                    # This is necessary to ensure the reconstructed path is accurate.
+
+                                    muon_coords = does_muon_hit_RPC(track[0], track[1], rpc)
+                                    if muon_coords:
+                                        self.possible_reconstructions[rpc] += 1
+                                        self.possible_reconstructions_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
+                                        for idx, t in enumerate(self.tol):
+                                            check = does_RPC_detect_muon(muon_coords, track[7], t)
+                                            if check:
+                                                self.successful_reconstructions[rpc][idx] += 1
+                                                self.successful_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
+                                            else:
+                                                self.failed_reconstructed_coords[rpc][int(muon_coords[0] / 2.7625)][int(muon_coords[1] / 2.9844)] += 1
+
+
+    def reconstruct_and_findtof(self, dataset, rpc_comparisons):
+        for i, data in enumerate(dataset):
+            if count_entries(data) < 100:
+                E_recon = reconstruct_timed_Chi2_ByRPC(data, 3, -1, rpc_indicies=rpc_comparisons)
+                if E_recon:
+                    E_recon = E_recon[0]
+                    if len(E_recon[2]) >= 6:
+                        self.dT.append(E_recon[5])
+                        self.recon.append(E_recon)
+                        
+    def extract_angles_phi_eta_timed_DZ_modified(self, filtered_events, max_length=None, exact_length=False):
+        angles_eta = []
+        angles_phi = []
+        delta_times = []
+        dZ = []
+        chi2_values = []
+        solid_angle = []
+        
+        bin_size = 1
+        eta_phi_bin_edges = np.arange(-90.5, 91.5, bin_size)
+        solid_phi_bin_edges = np.arange(-180.5, 181.5, bin_size)
+
+        for i, filtered_event in enumerate(filtered_events):
+            if count_entries(filtered_event) < 100:
+                result = reconstruct_timed_Chi2_modified(filtered_event, 3, max_length=max_length, exact_length=exact_length)
+            else:
+                result = None
+
+            if result is not None:
+                if result[1][2] > 0:
+                    delta_times.append(result[5])
+                    chi2_values.append(result[4])
+                    dZ.append(result[6])
+
+                    v_parr_eta = np.array([0, result[1][1], result[1][2]])
+                    theta_eta = np.arccos(np.dot(v_parr_eta, [0, 0, 1]) / np.linalg.norm(v_parr_eta))
+
+                    if theta_eta > np.pi / 2:
+                        theta_eta = np.pi - theta_eta
+                    if v_parr_eta[1] > 0:
+                        theta_eta *= -1
+
+                    angles_eta.append(theta_eta)
+
+                    v_parr_phi = np.array([result[1][0], 0, result[1][2]])
+                    theta_phi = np.arccos(np.dot(v_parr_phi, [0, 0, 1]) / np.linalg.norm(v_parr_phi))
+
+                    if theta_phi > np.pi / 2:
+                        theta_phi = np.pi - theta_phi
+                    if v_parr_phi[0] < 0:
+                        theta_phi *= -1
+
+                    angles_phi.append(theta_phi)
+
+                    magnitude = np.linalg.norm(result[1])
+                    theta = np.arccos(result[1][2] / -magnitude)  # Polar angle
+                    phi = np.arctan2(result[1][1], result[1][0])  # Azimuthal angle
+
+                    # Normalize phi to the range [-π, π]
+                    if phi > np.pi:
+                        phi -= 2 * np.pi
+                    elif phi < -np.pi:
+                        phi += 2 * np.pi
+
+                    # Convert angles to degrees
+                    theta_deg = np.degrees(theta)
+                    
+                    phi_deg = np.degrees(phi)
+
+                    # Append the solid angle (theta, phi) to self.angles_solid
+                    solid_angle.append((theta_deg, phi_deg))
+
+        angles_eta_degrees = [x * (180 / np.pi) for x in angles_eta]
+        angles_phi_degrees = [x * (180 / np.pi) for x in angles_phi]
+        angles_solid_theta_degrees = [x for x, y in solid_angle]
+        angles_solid_phi_degrees = [y for x, y in solid_angle]
+
+        self.eta_histogram += np.histogram(angles_eta_degrees, bins=eta_phi_bin_edges)[0]
+        self.phi_histogram += np.histogram(angles_phi_degrees, bins=eta_phi_bin_edges)[0]
+        self.solid_theta_histogram += np.histogram(angles_solid_theta_degrees, bins=solid_phi_bin_edges)[0]
+        self.solid_phi_histogram += np.histogram(angles_solid_phi_degrees, bins=solid_phi_bin_edges)[0]
+                    
+                
+    def plot_tof_offset(self, rpc_comparison):
+        tof = [[] for _ in range(6)]
+        for dT in self.dT:
+            for i in range(len(rpc_comparison)):
+                tof[i].append(dT[i])
+        Test_coord = [[] for _ in range(6)]
+        for recon in self.recon:
+            distance_per_phi_channel = 2.7625 #cm
+            distance_per_eta_channel = 2.9844 #cm
+            for i in range(6):
+                recon[2][i][0] = int(recon[2][i][0] / distance_per_phi_channel)
+                recon[2][i][1] = int(recon[2][i][1] / distance_per_eta_channel)
+                Test_coord[i].append([recon[2][i][0], recon[2][i][1]])
+                
+        Coordinate = {0:[[[] for etchan in range(32)] for phchan in range(64)],
+            1:[[[] for etchan in range(32)] for phchan in range(64)],
+            2:[[[] for etchan in range(32)] for phchan in range(64)],
+            3:[[[] for etchan in range(32)] for phchan in range(64)], 
+                    4:[[[] for etchan in range(32)] for phchan in range(64)],
+                        5:[[[] for etchan in range(32)] for phchan in range(64)]}
+
+        scDiffs = [[0 for etchan in range(32)] for phchan in range(64)]
+        normDiffs = [[0 for etchan in range(32)] for phchan in range(64)]
+        rpcNames = {0:"Triplet Low",1: "Triplet Mid", 2:"Triplet Top", 3:"Singlet",4:"Doublet Low",5:"Doublet Top"}
+        for i in range(len(tof[0])):
+            for j in range(5):
+                Coordinate[j + 1][Test_coord[j + 1][i][0]][Test_coord[j + 1][i][1]].append(tof[j][i])
+
+                
+        for rpc in [1,2,3,4,5]:
+            for ph in range(64):
+                for et in range(32):
+                    # if sum(width[rpc][ph][et].counts())>0:
+                        scDiffs[ph][et]=np.mean(Coordinate[rpc][ph][et])
+            
+            fig, ax = plt.subplots(1, figsize=(16, 8), dpi=100)
+            etachannels = [x-0.5 for x in range(33)]
+            phichannels = [x-0.5 for x in range(65)]
+            etaHist = (scDiffs, np.array(phichannels), np.array(etachannels))
+            zrange = [-20,30]
+            thisHist = hep.hist2dplot(etaHist,norm=colors.Normalize(zrange[0],zrange[1]))
+            thisHist.cbar.set_label('tof with 0 as reference', rotation=270, y=0.1,labelpad=23)
+            plt.ylim(31.5,-0.5)
+            plt.ylabel("Eta Channel")
+            plt.xlabel("Phi Channel")
+            ax.set_title(rpcNames[rpc])
+            x_points = [-0.5, 64.5]
+            y_points = [7.5, 15.5, 23.5]
+            for y_point in y_points:
+                plt.plot(x_points, [y_point,y_point], 'k', linestyle='dotted')
+            y_points = [-0.5, 31.5]
+            x_points = [7.5,15.5, 23.5, 31.5, 39.5, 47.5, 55.5]
+            for x_point in x_points:
+                plt.plot([x_point,x_point], y_points, 'k', linestyle='dashed')
+            plt.show()
+"""
 def find_tof_time(eta, phi, slope = 0.05426554612593516, offSet = 15.8797407836404):
     if (len(set([eta.eta, phi.eta])) == 1):
         return 0
     else:
         return slope*(phi.channel-eta.channel)-offSet
-
-def FindCoincidentHits(etaHits, phiHits, time_window, tof_correction = True, slope = 0.05426554612593516, offSet = 15.8797407836404):
-    channels = []
-
-    for RPC in range(6):
-        channels += [hit for hit in etaHits[RPC] if 150 <= hit.time <= 350 and hit.channel != 0]
-        
-        channels += [hit for hit in phiHits[RPC] if 150 <= hit.time <= 350 and hit.channel != 0]
-        
-    event_sorted = sorted(channels, key=lambda rpcHit: (rpcHit.event_num, rpcHit.time))
-    grouped_and_sorted = {key: list(group) 
-                          for key, group in groupby(event_sorted, lambda rpcHit: rpcHit.event_num)}
-    #print("Grouped")
-    #p
-    #rint(grouped_and_sorted)
-    coincident_hits = []
-
-    for event_num, hits in grouped_and_sorted.items():
-        temp_hits = []
-
-        for i in range(len(hits) - 1):
-            if tof_correction:
-                if hits[i].eta and not hits[i+1].eta:
-                    correction = find_tof_time(hits[i], hits[i+1], slope, offSet)
-                elif not hits[i] and hits[i+1].eta:
-                    correction = find_tof_time(hits[i+1], hits[i], slope, offSet)
-                else:
-                    correction = 0
-            else:
-                correction = 0
-            
-            if abs(hits[i+1].time - hits[i].time - correction) <= time_window: #can it be out of order due to the correction?
-                temp_hits.append(hits[i])
-                temp_hits.append(hits[i+1])
-            #I think this is wrong?? It can be both phi, 
-            # Does not represent quality Better??
-            #also you can add stuff into the cluster which are not related, which I guess it is not bad
-        #shift
-        if temp_hits:
-            unique_hits = { (hit.channel, hit.time, hit.eta, hit.event_num, hit.rpc): hit for hit in temp_hits }.values()
-            eta_hits = [hit for hit in unique_hits if hit.eta]
-            if eta_hits:
-                time_bin = min(hit.time for hit in eta_hits) 
-                #highly speculative
-            else:
-                time_bin = 1 #again
-        
-            coincident_hits.append([
-                event_num,
-                time_bin,
-                [[hit.rpc, hit.channel, hit.time, hit.eta] for hit in unique_hits]
-            ])
-    #print("Coin")
-    #print(coincident_hits)
-    return coincident_hits
+"""
 
 
-def cluster(coincident_hits):
+
+
+def clusterAFDFSD(coincident_hits):
     coincident_hits_clustered = []
-
+    #[event_num, eta_time, [phi_hits, eta_hits]]
     for coincidence_event in coincident_hits:
 
         coincident_event_clustered = [coincidence_event[0], coincidence_event[1], []] #event, time, []
@@ -149,18 +506,18 @@ def cluster(coincident_hits):
 
 
 
-def extract_coords_timed_Chi2(event,max_cluster_size):
+def extract_coords_timed_Chi2(event_clusters,max_cluster_size):
 
     #This function converts spatially clusters in RPCs into x and y coordinates (z given by RPC number)
-    # event = ['Event x',TIMEBIN, [[[RPC1_PHI_CLUSTERS],[RPC1_ETA_CLUSTERS]],[[...],[...]],...]
-
+    
     #Extract x and y coords of cluster in event
     distance_per_phi_channel = 2.7625 #cm
     distance_per_eta_channel = 2.9844 #cm
     
     coords = []
-    for RPC in range(6):
+    for rpc, rpc_clusters in event_clusters:
         
+
         x_clusters = [x for x in event[2][RPC][0] if len(x)<=max_cluster_size] #phi direction
         y_clusters = [y for y in event[2][RPC][1] if len(y)<=max_cluster_size] #eta direction
 
@@ -246,8 +603,6 @@ def generate_hit_coords_combo_Chi2(coords, RPC_heights, max_length=None, exact_l
     for x in x_values:
         for y in y_values:
             if x is not None and y is not None and isinstance(x[0], (int, float)) and isinstance(y[0], (int, float)):
-                #i think the logic goes here
-                
                 hit_coords.append([x, y, RPC_heights[depth]])
                 generate_hit_coords_combo_Chi2(coords, RPC_heights, max_length, exact_length, combinations, hit_coords, depth + 1)
                 hit_coords.pop()
@@ -401,65 +756,120 @@ def fit_event_chi2(coordinates_with_error, rpc_indicies = None):
     return p0, d, Chi2, coordinates, dT, dZ
 
 
-def reconstruct_timed_Chi2_ByRPC(event,max_cluster_size, RPC_excluded, rpc_indicies = None):
 
-    max_Chi2 = 10
+def fit_combination(combination):
+    coordinates = []
+    uncertainties = [] #no clue how to spell uncertainties
+    for cluster in combination:
+        #think about it
+        if cluster is None:
+            continue
+        coordinates.append([cluster.time[0], *cluster.coords])
+        uncertainties.append([cluster.time[1], *cluster.var])
+    coordinates = np.array(coordinates)
+    uncertainties = np.array(uncertainties)
+    candidate = Track(coordinates, uncertainties)
+    try:
+        candidate.fit()
+    except:
+        return None
+    
+    return candidate
 
+def find_best_track(event_clusters, RPC_excluded = None):
+    #check empty RPCs
+    empty_RPC_count = sum(1 for rpc in event_clusters if rpc == [])
+    if empty_RPC_count > 3:
+        return []
+    #check cross chamberness
+    cross_chamberness = 0
+    if any(event_clusters[0:3]): #triplet
+        cross_chamberness += 1
+    if any(event_clusters[3:4]): #singlet
+        cross_chamberness += 1
+    if any(event_clusters[4:6]): #doublet
+        cross_chamberness += 1
+
+    if cross_chamberness < 2:
+        return []
+    #If you are testing, exclude the RPC under test
+    if RPC_excluded:
+        test_coords = event_clusters[RPC_excluded]
+        event_clusters[RPC_excluded] = []
+    #Reject big clusters
+    max_cluster_size = 3
+    event_clusters = [[x for x in rpc if x.size <=max_cluster_size]+[None] for rpc in event_clusters]
+    #main loop
+    combinations = list(product(*event_clusters))
+    combinations = [x for x in combinations if sum(1 for rpc in x if rpc == None) < 3]
+    possible_tracks = []
+    for ind, combo in enumerate(combinations):
+        potential_track = fit_combination(combo)
+        if potential_track and potential_track.chi2 < 6:
+            possible_tracks.append(potential_track)
+    #now there is a deal - which tracks am I going to return?
+    #smallest chi2
+    winners = []
+    while possible_tracks:
+        winner = min(possible_tracks, key = lambda x: x.chi2)
+        winners.append(winner)
+        possible_tracks.pop(possible_tracks.index(winner))
+        new_possible_tracks = []
+        for ops in possible_tracks:
+            if not any(taken in ops.coordinates for taken in winner.coordinates):
+                new_possible_tracks.append(ops)
+        if new_possible_tracks:
+            print("Before:",[x.coordinates for x in possible_tracks])
+            print(winner.coordinates)
+            print("After:", [x.coordinates for x in new_possible_tracks])
+        possible_tracks = new_possible_tracks
+        
+    return winners
+    """
+        if dT[-1] is not None:
+            if dT[-1] > 0:
+                if optimised_d[2] < 0:
+                    optimised_d = np.multiply(optimised_d,-1)
+            else:
+                if optimised_d[2] > 0:
+                    optimised_d = np.multiply(optimised_d,-1)
+        if Chi2_current<max_Chi2:
+            tracks.append([optimised_centroid, optimised_d, optimised_coords, combinations, Chi2_current, dT, dZ])
+        else:
+            return tracks
+    """
+
+def reconstruct_timed_Chi2_ByRPC(event_clusters,max_cluster_size, RPC_excluded, rpc_indicies = None):
+
+    max_Chi2 = 6
     # event = ['Event x',TIMEBIN, [[[RPC1_PHI_CLUSTERS],[RPC1_ETA_CLUSTERS]],[[...],[...]],...]
-    RPC_heights = [0.6,1.8,3.0,61.8,121.8,123] #Heights of middle point of each RPC, measured from the bottom of the Triplet Low RPC. Units are cm.
-
-
+    
     #Extract x and y coords of cluster in event
-    coords = extract_coords_timed_Chi2(event,max_cluster_size)
+    coords = extract_coords_timed_Chi2(event, max_cluster_size)
     #[x_coords] = [[x,err_x,x_time],...]
     
-    #RPC_coords = [x_coords,y_coords]
-
-    #coords = [[RPC1_coords],[RPC2_coords],[RPC3_coords],...]
-    test_coords = -1
-
     # Filter out coords of RPC under test 
     if RPC_excluded != -1:
-        test_coords = coords[RPC_excluded]
+        test_coords = event_clusters[RPC_excluded]
+        event_clusters[RPC_excluded] = []
 
-        coords[RPC_excluded] = [[],[],"N"] 
-    # print(coords)
-    # Count the number of empty RPCs
-    empty_RPC_count = sum(1 for item in coords if item == [[], [],'N'])
-
-    # If less than 3 elements of coords are occupied, exit the function
+    empty_RPC_count = sum(1 for rpc in coords if rpc == [])
     if empty_RPC_count > 4:
         # print("Failed to reconstruct, not enough coords")
         return []  # Exit the function
     
     cross_chamberness = 0
 
-    if coords[0] != [[], [], 'N'] or coords[1] != [[], [], 'N'] or coords[2] != [[], [], 'N']:
+    if any(event_clusters[0:3]): #triplet
         cross_chamberness += 1
-
-    if coords[3] != [[], [], 'N']:
+    if any(event_clusters[3:4]): #singlet
         cross_chamberness += 1
-
-    if coords[4] != [[], [], 'N'] or coords[5] != [[], [], 'N']:
+    if any(event_clusters[4:6]): #doublet
         cross_chamberness += 1
 
     if cross_chamberness < 2:
-        # print("Failed to reconstruct, too few chambers")
         return []
 
-    #ITERATING OVER EVERY POSSIBLE COMBINATION OF x,y,z over all 3 RPCs (limited to one x,y per RPC).
-    #Doesn't look particularly nice, but there are not many coordinates to loop over usually....
-
-    """
-    print(len(combinations))
-    if len(combinations) > 20:
-        return None
-    """
-    
-    #Now for each combo in combinations, attempt to reconstruct a path. See which one gives the best trajectory.
-
-    #If success, print parameters of fitting function.
-    #If fail, print reconstruction failed.
     something = True
     tracks = []
     possible_tracks = []
