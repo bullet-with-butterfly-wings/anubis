@@ -125,15 +125,15 @@ def event_3d_plot(proAnubis_event, reconstructor, title, save=False):
 
     colours = ['orange', "red"]
     for hit in hits:
-        col = colours[int(175 < hit.time < 350)]
+        col = colours[int(150 < hit.time < 350)]
         if hit.eta: #eta
-            stripe_coord = [hit.channel*distance_per_eta_channel,hit.channel*distance_per_eta_channel+1]
+            stripe_coord = [hit.channel*distance_per_eta_channel,(hit.channel+1)*distance_per_eta_channel+1]
             x_stripe = np.array([[0, 0], [dimensions[0], dimensions[0]]])    # Spans the y-axis fully
             y_stripe = np.array([stripe_coord, stripe_coord])  # Only a portion of the x-axis
             z_stripe = np.ones((1, 1)) * RPC_heights[hit.rpc]              # Same height (z=60)
             ax.plot_surface(x_stripe, y_stripe, z_stripe, color=col, alpha=0.9)
         else:
-            stripe_coord = [hit.channel*distance_per_phi_channel,hit.channel*distance_per_phi_channel+1]
+            stripe_coord = [hit.channel*distance_per_phi_channel,(hit.channel+1)*distance_per_phi_channel]
             x_stripe = np.array([stripe_coord, stripe_coord])  # Only a portion of the x-axis
             y_stripe = np.array([[0, 0], [dimensions[1], dimensions[1]]])    # Spans the y-axis fully
             z_stripe = np.ones((1, 1)) * RPC_heights[hit.rpc]              # Same height (z=60)
@@ -143,8 +143,9 @@ def event_3d_plot(proAnubis_event, reconstructor, title, save=False):
     
     reconstructor.update_event([proAnubis_event], 0)
     cluster = reconstructor.cluster()
+    print("RPC:",sum([1 for x in cluster[0] if x]))
     tracks = reconstructor.reconstruct_track(cluster)
-
+    print("Tracks:", len(tracks[0]))
     for track in tracks[0]:
         optimised_centroid = track.centroid[1:]
         optimised_d = track.direction[1:]
@@ -163,8 +164,8 @@ def event_3d_plot(proAnubis_event, reconstructor, title, save=False):
     
 
     # Set axis labels
-    #ax.set_xlabel('φ channels')
-    #ax.set_ylabel('η channels')
+    ax.set_xlabel('phi channels')
+    ax.set_ylabel('eta channels')
     ax.set_zlabel('Z / cm')
 
 

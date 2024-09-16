@@ -19,6 +19,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 time_range = (150,350)
 RPC_heights = [0.6,1.8,3.0,61.8,121.8,123] #Heights of middle point of each RPC, measured from the bottom of the Triplet Low RPC. Units are cm.
+tot_speed_factor = 0.15204446322001586 #(25/32) ns / channel
 
 #time of flight, angles, 
 class Track():
@@ -27,9 +28,9 @@ class Track():
         self.uncertainties = uncertainties #var_t, var_x, var_y
         self.centroid = np.mean(coordinates, axis=0)
         self.direction = None #proportional to velocity
-        self.speed = 299792458.0 #m/s
+        self.speed = 1 #c
         self.is_cosmic = False
-        self.chi2 = 100
+        self.chi2 = 100 #arbitrary high value
 
     def __bool__(self):
         return True
@@ -44,8 +45,13 @@ class Track():
             uncertainty = np.sqrt(uncertainty)
             
         """
-        if self.direction[0] != 0:
-            self.speed = np.linalg.norm(self.direction[1:])/self.direction[0]*(32/25*10**7)
+        if (self.coordinates[-1][0] - self.coordinates[0][0]) != 0:
+            self.speed = np.linalg.norm(self.coordinates[-1][1:]-self.coordinates[0][1:])/(self.coordinates[-1][0] - self.coordinates[0][0])
+            self.speed *= (32/25*10**7)/2.99792458e8
+        
+        if self.direction[3] != 0:
+            #self.speed = np.linalg.norm(self.direction[1:])/self.direction[0]*(32/25*10**7)
+            #self.speed = (32/25*10**7)*np.linalg.norm(self.coordinates[-1][1:]-self.coordinate[0][1:])/(self.coordinates[-1][0] - self.coordinates[0][0])
             self.is_cosmic = self.direction[0]/self.direction[3] < 0
         self.calculate_chi2()   
 
@@ -54,8 +60,12 @@ class Track():
         i = 0 #degrees of freeedom
         for idx, point in enumerate(self.coordinates):            
             i+=3
+            if self.direction[3] == 0:
+                chi2 = 100
+                return chi2
+            
             t = (point[3]-self.centroid[3])/self.direction[3] #parameter of the line
-            for degree in range(3):
+            for degree in range(1,3):
                 ideal = self.centroid[degree] + t*self.direction[degree]
                 real = point[degree]
                 chi2+= (real-ideal)**2/self.uncertainties[idx][degree] 
@@ -86,7 +96,7 @@ class Cluster():
         if eta_hits:
             first_eta = min(eta_hits, key = lambda hit: hit.time)
             self.channel_position[1] = first_eta.channel
-            self.time = [first_eta.time, 0]
+            self.time = [first_eta.time - first_eta.channel*tot_speed_factor, 0]
         return [phi_hits, eta_hits]
         
     def calculate_coords(self):
@@ -162,7 +172,6 @@ class Reconstructor():
         for tdc in range(5):
             if event.tdcEvents[tdc].qual != 0:
                 skip_event = True
-                break 
 
             #if skip_event:
             #    continue 
@@ -186,11 +195,45 @@ class Reconstructor():
         self.processedEvents = processed_event
         self.etaHits = [[] for rpc in range(6)]
         self.phiHits = [[] for rpc in range(6)]
-    
-    
+
+    def fake_speed_histogram(self, rpc_to_compare):
+        fake_speed = [[] for pair in range(len(rpc_to_compare))]
+        for tracks in self.tracks:
+            if not tracks:
+                continue
+            for track in tracks:
+                rpcs_detected = [rpc for rpc in range(6) if track.size[rpc] != 0]
+                rpc_pos = [[] for rpc in range(6)]
+                rpc_times = [0 for rpc in range(6)]
+                for point in track.coordinates:
+                    rpc = RPC_heights.index(point[3])
+                    rpc_times[rpc] = point[0]
+                    rpc_pos[rpc] = point[1:3]
+               
+                for idx, [rpc1, rpc2] in enumerate(rpc_to_compare):
+                    if rpc1 in rpcs_detected and rpc2 in rpcs_detected:
+                        fake_speed[idx].append((rpc_times[rpc2] - rpc_times[rpc1])/np.linalg.norm(np.array(rpc_pos[rpc2])-np.array(rpc_pos[rpc1])))
+        return fake_speed
+
+    def tof_histogram(self, rpc_to_compare):
+        tof = [[] for pair in range(len(rpc_to_compare))]
+        for tracks in self.tracks:
+            if not tracks:
+                continue
+            for track in tracks:
+                rpc_times = [0 for rpc in range(6)]
+                for point in track.coordinates:
+                    rpc = RPC_heights.index(point[3])
+                    rpc_times[rpc] = point[0]
+                rpcs_detected = [rpc for rpc in range(6) if rpc_times[rpc] != 0]
+                for idx, [rpc1, rpc2] in enumerate(rpc_to_compare): #use actual for now
+                    if rpc1 in rpcs_detected and rpc2 in rpcs_detected:
+                        tof[idx].append(rpc_times[rpc2] - rpc_times[rpc1])
+        return tof
+
+            
     def cluster(self, time_window = 5):
-        #slope = 0.05426554612593516
-        #slope = 0.15204446322001586
+        speed = 0.15204446322001586 #(25/32) ns / channel
         result = [] #[event_num, eta_time, [phi_hits, eta_hits]]
         for event_num, event in enumerate(self.event_chunk):
             self.populate_hits(event)
@@ -208,8 +251,7 @@ class Reconstructor():
                         continue
 
                     for i in range(len(hits) - 1):    
-                        if abs(hits[i+1].time - hits[i].time) <= time_window: 
-                        #can it be out of order due to the correction? Probably yes
+                        if abs(hits[i+1].time - hits[i].time - speed*(hits[i+1].channel -hits[i].channel)) <= time_window: 
                             temp_hits.append(hits[i+1])
                         elif temp_hits:
                             first = min(temp_hits, key=lambda x: x.time)
@@ -250,7 +292,8 @@ class Reconstructor():
                 leaderboard = []
                 for (phi_time, phi_channel, phi_hits), (eta_time, eta_channel, eta_hits) in product(phi_coincident, eta_coincident):
                     time_difference = abs(eta_time - phi_time - self.mean_tot[rpc][phi_channel][eta_channel])/self.std_tot[rpc][phi_channel][eta_channel]
-                    is_time_coincident = abs(time_difference) < 3
+                    #is_time_coincident = abs(time_difference) < 5
+                    is_time_coincident = True
                     if is_time_coincident:
                         leaderboard.append([time_difference, [phi_hits, eta_hits]])
 
@@ -266,7 +309,7 @@ class Reconstructor():
         return result
 
 
-    def reconstruct_track(self, clusters, rpc_excluded = -1):
+    def reconstruct_track(self, clusters, rpc_excluded = None):
         for evt_num, event_clusters in enumerate(clusters):
             tracks = find_best_track(event_clusters, rpc_excluded)
             self.tracks.append(tracks) #inlcude event number
@@ -769,11 +812,12 @@ def fit_combination(combination):
     coordinates = np.array(coordinates)
     uncertainties = np.array(uncertainties)
     candidate = Track(coordinates, uncertainties)
+    speed = (32/25*10**7)*np.linalg.norm(candidate.coordinates[-1][1:]-candidate.coordinates[0][1:])/(candidate.coordinates[-1][0] - candidate.coordinates[0][0])
+
     try:
         candidate.fit()
     except:
         return None
-    
     return candidate
 
 def find_best_track(event_clusters, RPC_excluded = None):
@@ -798,17 +842,35 @@ def find_best_track(event_clusters, RPC_excluded = None):
         event_clusters[RPC_excluded] = []
     #Reject big clusters
     max_cluster_size = 3
-    event_clusters = [[x for x in rpc if x.size <=max_cluster_size]+[None] for rpc in event_clusters]
-    #main loop
+    event_clusters = [[x for x in rpc if x.size <= max_cluster_size] for rpc in event_clusters]
+    for rpc in range(6):
+        if event_clusters[rpc] == []:
+            event_clusters[rpc] = [None]
+    
     combinations = list(product(*event_clusters))
-    combinations = [x for x in combinations if sum(1 for rpc in x if rpc == None) < 3]
+    
+    #print([len(x) if x[0] else 0 for x in event_clusters])
+    if all([len(x) if len(x) > 2 else 0 for x in event_clusters]):
+        print([len(x) for x in event_clusters])
+        print("MAYBE")
+
+    #main loop
     possible_tracks = []
     for ind, combo in enumerate(combinations):
+        if sum(1 for rpc in event_clusters if rpc == [None]) > 3:
+            continue #short combination
         potential_track = fit_combination(combo)
-        if potential_track and potential_track.chi2 < 6:
+        if potential_track and potential_track.chi2 < 10:
             possible_tracks.append(potential_track)
+        #if potential_track and potential_track.chi2 < 10:
+        #    possible_tracks.append(potential_track)
     #now there is a deal - which tracks am I going to return?
     #smallest chi2
+    possible_tracks = sorted(possible_tracks, key = lambda x: x.chi2)
+    if possible_tracks:
+        return [possible_tracks[0]]
+    else:
+        return []
     winners = []
     while possible_tracks:
         winner = min(possible_tracks, key = lambda x: x.chi2)
@@ -823,7 +885,6 @@ def find_best_track(event_clusters, RPC_excluded = None):
             print(winner.coordinates)
             print("After:", [x.coordinates for x in new_possible_tracks])
         possible_tracks = new_possible_tracks
-        
     return winners
     """
         if dT[-1] is not None:
