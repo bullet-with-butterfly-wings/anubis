@@ -6,6 +6,7 @@ import  os
 import glob
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+plt.rc('text', usetex=True)
 # Add the directories to the sys.path
 dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//" # insert your directory path
 sys.path.append(dir_path + "Osiris//processing//python")
@@ -144,14 +145,21 @@ def event_3d_plot(proAnubis_event, reconstructor, title, save=False):
     reconstructor.update_event([proAnubis_event], 0)
     cluster = reconstructor.cluster()
     print("RPC:",sum([1 for x in cluster[0] if x]))
-    tracks = reconstructor.reconstruct_track(cluster)
+    tracks = reconstructor.reconstruct_tracks(cluster, 0)
     print("Tracks:", len(tracks[0]))
+    if len(tracks[0]) > 1:
+        closest_distance, inter = RTools.intersection(tracks[0][0], tracks[0][1])
+
     for track in tracks[0]:
         optimised_centroid = track.centroid[1:]
         optimised_d = track.direction[1:]
         x = []
         y = []
         z = []
+        if len(tracks[0]) > 1:
+            x = [inter[0]]
+            y = [inter[1]]
+            z = [inter[2]]
         for rpc, height in enumerate(RPC_heights):
             t = (height-optimised_centroid[2])/optimised_d[2]
             x = np.append(x, optimised_centroid[0] + optimised_d[0]*t)
@@ -164,9 +172,9 @@ def event_3d_plot(proAnubis_event, reconstructor, title, save=False):
     
 
     # Set axis labels
-    ax.set_xlabel('phi channels')
-    ax.set_ylabel('eta channels')
-    ax.set_zlabel('Z / cm')
+    ax.set_xlabel('$\phi$ channels')
+    ax.set_ylabel('$\eta$ channels')
+    ax.set_zlabel('Z [cm]')
 
 
     ax.set_xticks([i*distance_per_phi_channel for i in range(0, 65, 8)], labels=[str(i) for i in range(0, 65, 8)])
