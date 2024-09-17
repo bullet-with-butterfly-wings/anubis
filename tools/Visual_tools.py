@@ -4,6 +4,7 @@ from tqdm import tqdm
 import numpy as np
 import  os
 import glob
+import random
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 plt.rc('text', usetex=True)
@@ -142,33 +143,112 @@ def event_3d_plot(proAnubis_event, reconstructor, title, save=False):
 
     #reconstructor = RTools.Reconstructor([proAnubis_event], 0)
     
-    reconstructor.update_event([proAnubis_event], 0)
-    cluster = reconstructor.cluster()
-    print("RPC:",sum([1 for x in cluster[0] if x]))
-    tracks = reconstructor.reconstruct_tracks(cluster, 0)
-    print("Tracks:", len(tracks[0]))
+
+    tracks = reconstructor.reconstruct_tracks([proAnubis_event], 0)
     if len(tracks[0]) > 1:
         closest_distance, inter = RTools.intersection(tracks[0][0], tracks[0][1])
 
     for track in tracks[0]:
-        optimised_centroid = track.centroid[1:]
-        optimised_d = track.direction[1:]
         x = []
         y = []
         z = []
-        if len(tracks[0]) > 1:
-            x = [inter[0]]
-            y = [inter[1]]
-            z = [inter[2]]
-        for rpc, height in enumerate(RPC_heights):
-            t = (height-optimised_centroid[2])/optimised_d[2]
-            x = np.append(x, optimised_centroid[0] + optimised_d[0]*t)
-            y = np.append(y, optimised_centroid[1] + optimised_d[1]*t)
-            z = np.append(z, height)
-        y = [dimensions[1] - i for i in y]
-        # Plot points with a red connecting line
-        ax.scatter(x, y, z, color='blue', s=20)
-        ax.plot(x, y, z, color='purple', linewidth=2)
+           
+        if isinstance(track, RTools.Vertex):
+            distance, intersection = RTools.intersection(track.final[0], track.final[1])
+            initial = track.initial
+            #coordinates = track.coordinates[:, 1:] #rid of the first element
+            for rpc in range(3):
+                t = (RPC_heights[rpc]-initial.centroid[3])/initial.direction[3] 
+                x = np.append(x, initial.centroid[1] + initial.direction[1]*t)
+                y = np.append(y, initial.centroid[2] + initial.direction[2]*t)
+                z = np.append(z, RPC_heights[rpc])
+            x = np.append(x, intersection[0])
+            y = np.append(y, intersection[1])
+            z = np.append(z, intersection[2])
+            y = [dimensions[1] - i for i in y]
+            ax.scatter(x, y, z, color='blue', s=20)
+            ax.plot(x, y, z, color='purple', linewidth=2)
+            x = [intersection[0]]
+            y = [intersection[1]]
+            z = [intersection[2]]
+            final0 = track.final[0]
+            for rpc in range(3, 6):
+                t = (RPC_heights[rpc]-final0.centroid[3])/final0.direction[3] 
+                x = np.append(x, final0.centroid[1] + final0.direction[1]*t)
+                y = np.append(y, final0.centroid[2] + final0.direction[2]*t)
+                z = np.append(z, RPC_heights[rpc])
+            y = [dimensions[1] - i for i in y]
+            ax.scatter(x, y, z, color='blue', s=20)
+            ax.plot(x, y, z, color='purple', linewidth=2)
+            final1 = track.final[1]
+            x = [intersection[0]]
+            y = [intersection[1]]
+            z = [intersection[2]]            
+            for rpc in range(3, 6):
+                t = (RPC_heights[rpc]-final1.centroid[3])/final1.direction[3] 
+                x = np.append(x, final1.centroid[1] + final1.direction[1]*t)
+                y = np.append(y, final1.centroid[2] + final1.direction[2]*t)
+                z = np.append(z, RPC_heights[rpc])
+            y = [dimensions[1] - i for i in y]
+            ax.scatter(x, y, z, color='blue', s=20)
+            ax.plot(x, y, z, color='purple', linewidth=2)
+            """
+            initial_parametrs = [0, 0, 0, 0, 0, -0.5, -0.2, 0.2]
+            from scipy.optimize import minimize 
+            f = lambda x: RTools.loss_function(coordinates, x)
+            print(track.point)
+            initial_parametrs =  RTools.inverse_parametrized_vertex(track.point, track.initial.direction[1:], track.final[0].direction[1:], track.final[1].direction[1:])
+            print(initial_parametrs)
+            initial_score = RTools.loss_function(coordinates, initial_parametrs)
+            score = initial_score
+            print(initial_score)
+            best_score = initial_score
+            best_parameters = initial_parametrs
+            for i in range(100):
+                parameters = minimize(f, x0=initial_parametrs, method="Nelder-Mead").x
+                score = RTools.loss_function(coordinates, parameters)
+                if score < best_score:
+                    best_score = score
+                    best_parameters = parameters
+                initial_parametrs = parameters + np.random.uniform(-1, 1, size=8)
+            print("Best score:")
+            print(best_score)
+            print("Best parameters:")
+            print(best_parameters)
+            parameters = best_parameters
+            point, initial, finala, finalb = RTools.parametrized_vertex(*parameters)
+            #print(plane_parameters, point, initial, finala, finalb)
+            #plt these vertexes
+            vectors_to_plot = []
+            vectors_to_plot.append([*(point+50*initial), *(-50*initial)])
+            vectors_to_plot.append([*point, *(100*finala)])
+            vectors_to_plot.append([*point, *(100*finalb)])
+            for point in vectors_to_plot:
+                point[1] = dimensions[1] - point[1]
+                point[4] = - point[4]
+            #print(vectors_to_plot)
+
+            soa = vectors_to_plot
+            X, Y, Z, U, V, W = zip(*soa)
+            ax.quiver(X, Y, Z, U, V, W)
+            """
+            
+        else:
+            optimised_centroid = track.centroid[1:]
+            optimised_d = track.direction[1:]
+            if len(tracks[0]) > 1:
+                x = [inter[0]]
+                y = [inter[1]]
+                z = [inter[2]]
+            for rpc, height in enumerate(RPC_heights):
+                t = (height-optimised_centroid[2])/optimised_d[2]
+                x = np.append(x, optimised_centroid[0] + optimised_d[0]*t)
+                y = np.append(y, optimised_centroid[1] + optimised_d[1]*t)
+                z = np.append(z, height)
+            y = [dimensions[1] - i for i in y]
+            # Plot points with a red connecting line
+            ax.scatter(x, y, z, color='blue', s=20)
+            ax.plot(x, y, z, color='purple', linewidth=2)
     
 
     # Set axis labels
@@ -193,6 +273,7 @@ def event_3d_plot(proAnubis_event, reconstructor, title, save=False):
         plt.savefig("video//images_video//"+title+".png")
     else:
         plt.show()
+
 """
 def hitHeatMap(eventChunk, evt_num):
     heatMap = np.zeros((32,64))
