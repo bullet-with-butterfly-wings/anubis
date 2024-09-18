@@ -170,9 +170,7 @@ class Vertex(Track): #vertex looks like a track in a triplet, double in a single
                 best_score = score
                 best_parameters = parameters
             initial_parameters = parameters + np.random.uniform(-1, 1, size=8)
-        print("Best score", best_score)
-        print("Ops", min(50*self.chi2, 400)) #400 is magic number ngl
-        if best_score < min(50*self.chi2, 400):
+        if best_score < min(50*self.chi2, 400): #400 is magic number ngl
             self.point, self.initial.direction, self.final[0].direction, self.final[1].direction = parametrized_vertex(*best_parameters)            
             for track in [self.initial, *self.final]:
                 track.centroid = np.append(np.array([0.0]), self.point)
@@ -236,7 +234,7 @@ class Cluster():
 
 
 class Reconstructor():
-    def __init__(self, event_chunk, chunk_num, tolerance = None, coincidence_window = 15, tof_correction = True):
+    def __init__(self, event_chunk, chunk_num):
         self.event_chunk = event_chunk
         self.event_counter = 0
         self.tracks = []
@@ -244,10 +242,7 @@ class Reconstructor():
         self.phiHits = [[] for rpc in range(6)]
         self.mean_tot = [[[13 for eta in range(32)] for phi in range(64)] for rpc in range(6)]
         self.std_tot = [[[1 for eta in range(32)] for phi in range(64)] for rpc in range(6)]
-        self.tof_correction = tof_correction
         self.chunk_num = chunk_num
-        self.tol = [i/10 for i in range(100)] if tolerance is None else tolerance
-        self.dT = []
         self.collector = [[] for rpc in range(6)]
         self.chi2 = []
     
@@ -441,7 +436,7 @@ def find_best_track(event_clusters, event_id, RPC_excluded = None):
     
     #very easy way how to detect candidates for vertex
     cluster_numbers = [len(x) if x != [None] else 0 for x in event_clusters]
-    if cluster_numbers[:3] == [1,1,1] and sum(cluster_numbers[3:]) > 4:
+    if cluster_numbers[:3] == [1,1,1] and all([cl > 1 for cl in cluster_numbers[3:]]):
         vertex = Vertex([cluster for clusters in event_clusters for cluster in clusters])
         if vertex.fit():
             return [vertex]
