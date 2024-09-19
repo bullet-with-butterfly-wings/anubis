@@ -19,6 +19,7 @@ import proAnubis_Analysis_Tools
 import Reconstruction_tools as RTools
 import mplhep as hep
 import Timing_tools as TTools
+from itertools import chain
 import rawFileReader
 
 hep.style.use([hep.style.ATLAS])
@@ -100,177 +101,132 @@ def hitHeatMap(event): #actually returns 6 heatmaps, one for each rpc
                     heatMaps[hit.rpc][:,hit.channel] += np.ones(32)
     return heatMaps
 
-def event_3d_plot(proAnubis_event, reconstructor, title, save=False):
+def event_3d_plot(proAnubis_event, title, save=False):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
-    # Coordinates for the horizontal plane at z = 60
+    # Configuration and constants
     RPC_heights = [0.6, 1.8, 3.0, 61.8, 121.8, 123]
-    distance_per_phi_channel = 2.7625 #cm
-    distance_per_eta_channel = 2.9844 #cm
-    dimensions = [distance_per_phi_channel*64, distance_per_eta_channel*32]
+    distance_per_phi_channel = 2.7625  # cm
+    distance_per_eta_channel = 2.9844  # cm
+    dimensions = [distance_per_phi_channel * 64, distance_per_eta_channel * 32]
+
+    # Plot horizontal planes
     x = np.array([0, dimensions[0]])
     y = np.array([0, dimensions[1]])
     X, Y = np.meshgrid(x, y)
     for rpc_h in RPC_heights:
-        z_plane = np.ones((1, 1))*rpc_h  # Horizontal plane at z = 60
+        z_plane = np.full_like(X, rpc_h)  # Horizontal plane at the current z
         ax.plot_surface(X, Y, z_plane, color='blue', alpha=0.1)
 
-    # Plot the full horizontal plane (green)
+    # Collect hits
+    hits = [ATools.tdcChanToRPCHit(word, tdc, 0)[1] 
+            for tdc in range(5) 
+            for word in proAnubis_event.tdcEvents[tdc].words]
 
-    # make the hits
-    hits = []
-    for tdc in range(5):
-        for word in proAnubis_event.tdcEvents[tdc].words:
-            _, hit = ATools.tdcChanToRPCHit(word, tdc, 0)
-            hits.append(hit)
-
-    colours = ['orange', "red"]
+    # Plot hits
+    colours = ['orange', 'red']
+    print_hits = ""
     for hit in hits:
+        print_hits += str(hit) + "\n"
         col = colours[int(150 < hit.time < 350)]
-        if hit.eta: #eta
-            stripe_coord = [hit.channel*distance_per_eta_channel,(hit.channel+1)*distance_per_eta_channel+1]
-            x_stripe = np.array([[0, 0], [dimensions[0], dimensions[0]]])    # Spans the y-axis fully
-            y_stripe = np.array([stripe_coord, stripe_coord])  # Only a portion of the x-axis
-            z_stripe = np.ones((1, 1)) * RPC_heights[hit.rpc]              # Same height (z=60)
-            ax.plot_surface(x_stripe, y_stripe, z_stripe, color=col, alpha=0.9)
+        stripe_coord = [hit.channel * (distance_per_eta_channel if hit.eta else distance_per_phi_channel), 
+                        (hit.channel + 1) * (distance_per_eta_channel if hit.eta else distance_per_phi_channel)]
+        
+        if hit.eta:
+            # Eta stripe spans y-axis
+            x_stripe = np.array([[0, 0], [dimensions[0], dimensions[0]]])
+            y_stripe = np.array([stripe_coord, stripe_coord])
         else:
-            stripe_coord = [hit.channel*distance_per_phi_channel,(hit.channel+1)*distance_per_phi_channel]
-            x_stripe = np.array([stripe_coord, stripe_coord])  # Only a portion of the x-axis
-            y_stripe = np.array([[0, 0], [dimensions[1], dimensions[1]]])    # Spans the y-axis fully
-            z_stripe = np.ones((1, 1)) * RPC_heights[hit.rpc]              # Same height (z=60)
-            ax.plot_surface(x_stripe, y_stripe, z_stripe, color=col, alpha=0.9)
+            # Phi stripe spans x-axis
+            x_stripe = np.array([stripe_coord, stripe_coord])
+            y_stripe = np.array([[0, 0], [dimensions[1], dimensions[1]]])
 
-    #reconstructor = RTools.Reconstructor([proAnubis_event], 0)
-    
-
-    tracks = reconstructor.reconstruct_tracks([proAnubis_event], 0)
-    if len(tracks[0]) > 1:
-        closest_distance, inter = RTools.intersection(tracks[0][0], tracks[0][1])
-
-    for track in tracks[0]:
-        x = []
-        y = []
-        z = []
-           
+        z_stripe = np.full_like(x_stripe, RPC_heights[hit.rpc])
+        ax.plot_surface(x_stripe, y_stripe, z_stripe, color=col, alpha=0.9)
+    #ax.text(0, 0, 0, print_hits, color='black', fontsize=12, ha='right', va='top')
+    print(print_hits)
+    # Reconstruct tracks
+    reconstructor = RTools.Reconstructor()
+    reconstructor.update_event([proAnubis_event])
+    all_possible_clusters = [(cluster.time[0], cluster.coords) for cluster in list(chain(*reconstructor.cluster()[0]))]
+    tracks = reconstructor.reconstruct_tracks([proAnubis_event])[0]
+    tracks_to_plot = []
+    while tracks:
+        track = tracks.pop(0)
         if isinstance(track, RTools.Vertex):
-            distance, intersection = RTools.intersection(track.final[0], track.final[1])
-            initial = track.initial
-            #coordinates = track.coordinates[:, 1:] #rid of the first element
-            for rpc in range(3):
-                t = (RPC_heights[rpc]-initial.centroid[3])/initial.direction[3] 
-                x = np.append(x, initial.centroid[1] + initial.direction[1]*t)
-                y = np.append(y, initial.centroid[2] + initial.direction[2]*t)
-                z = np.append(z, RPC_heights[rpc])
-            x = np.append(x, intersection[0])
-            y = np.append(y, intersection[1])
-            z = np.append(z, intersection[2])
-            y = [dimensions[1] - i for i in y]
-            ax.scatter(x, y, z, color='blue', s=20)
-            ax.plot(x, y, z, color='purple', linewidth=2)
-            x = [intersection[0]]
-            y = [intersection[1]]
-            z = [intersection[2]]
-            final0 = track.final[0]
-            for rpc in range(3, 6):
-                t = (RPC_heights[rpc]-final0.centroid[3])/final0.direction[3] 
-                x = np.append(x, final0.centroid[1] + final0.direction[1]*t)
-                y = np.append(y, final0.centroid[2] + final0.direction[2]*t)
-                z = np.append(z, RPC_heights[rpc])
-            y = [dimensions[1] - i for i in y]
-            ax.scatter(x, y, z, color='blue', s=20)
-            ax.plot(x, y, z, color='purple', linewidth=2)
-            final1 = track.final[1]
-            x = [intersection[0]]
-            y = [intersection[1]]
-            z = [intersection[2]]            
-            for rpc in range(3, 6):
-                t = (RPC_heights[rpc]-final1.centroid[3])/final1.direction[3] 
-                x = np.append(x, final1.centroid[1] + final1.direction[1]*t)
-                y = np.append(y, final1.centroid[2] + final1.direction[2]*t)
-                z = np.append(z, RPC_heights[rpc])
-            y = [dimensions[1] - i for i in y]
-            ax.scatter(x, y, z, color='blue', s=20)
-            ax.plot(x, y, z, color='purple', linewidth=2)
-            """
-            initial_parametrs = [0, 0, 0, 0, 0, -0.5, -0.2, 0.2]
-            from scipy.optimize import minimize 
-            f = lambda x: RTools.loss_function(coordinates, x)
-            print(track.point)
-            initial_parametrs =  RTools.inverse_parametrized_vertex(track.point, track.initial.direction[1:], track.final[0].direction[1:], track.final[1].direction[1:])
-            print(initial_parametrs)
-            initial_score = RTools.loss_function(coordinates, initial_parametrs)
-            score = initial_score
-            print(initial_score)
-            best_score = initial_score
-            best_parameters = initial_parametrs
-            for i in range(100):
-                parameters = minimize(f, x0=initial_parametrs, method="Nelder-Mead").x
-                score = RTools.loss_function(coordinates, parameters)
-                if score < best_score:
-                    best_score = score
-                    best_parameters = parameters
-                initial_parametrs = parameters + np.random.uniform(-1, 1, size=8)
-            print("Best score:")
-            print(best_score)
-            print("Best parameters:")
-            print(best_parameters)
-            parameters = best_parameters
-            point, initial, finala, finalb = RTools.parametrized_vertex(*parameters)
-            #print(plane_parameters, point, initial, finala, finalb)
-            #plt these vertexes
-            vectors_to_plot = []
-            vectors_to_plot.append([*(point+50*initial), *(-50*initial)])
-            vectors_to_plot.append([*point, *(100*finala)])
-            vectors_to_plot.append([*point, *(100*finalb)])
-            for point in vectors_to_plot:
-                point[1] = dimensions[1] - point[1]
-                point[4] = - point[4]
-            #print(vectors_to_plot)
+            if track.inside: #inside
+                tracks_to_plot.append(([RPC_heights[0], track.point[2]], [track.initial.centroid, track.initial.direction], track.initial.clusters))
+                tracks_to_plot.append(([track.point[2], RPC_heights[-1]], [track.final[0].centroid, track.final[0].direction], track.final[0].clusters))
+                tracks_to_plot.append(([track.point[2], RPC_heights[-1] ], [track.final[1].centroid, track.final[1].direction], track.final[1].clusters))
+            else: #double
+                tracks_to_plot = [([track.point[2], RPC_heights[-1]], [track.final[0].centroid, track.final[0].direction], track.final[0].clusters)]
+                tracks_to_plot.append(([track.point[2], RPC_heights[-1]], [track.final[1].centroid, track.final[1].direction], track.final[1].clusters))
+        else: #single
+            tracks_to_plot.append(([RPC_heights[0],RPC_heights[-1]], [track.centroid, track.direction], track.clusters))
+        #plot clusters as well
+    # Plot tracks
+    for track_data in tracks_to_plot:
+        x, y, z = [], [], []
+        centroid, direction = track_data[1]
+        bottom, top = track_data[0]
+        height_to_plot = [bottom, *[h for h in RPC_heights if bottom < h < top], top]
+        for h in height_to_plot:
+            t = (h - centroid[3]) / direction[3]
+            x.append(centroid[1] +  direction[1] * t)
+            y.append(dimensions[1] - (centroid[2] + direction[2] * t))
+            z.append(h)
+        ax.scatter(x, y, z, color='blue', s=20)
+        ax.plot(x, y, z, color='purple', linewidth=2)
+        
+        triplet = []
+        singlet = []
+        doublet = []
 
-            soa = vectors_to_plot
-            X, Y, Z, U, V, W = zip(*soa)
-            ax.quiver(X, Y, Z, U, V, W)
-            """
-            
-        else:
-            optimised_centroid = track.centroid[1:]
-            optimised_d = track.direction[1:]
-            if len(tracks[0]) > 1:
-                x = [inter[0]]
-                y = [inter[1]]
-                z = [inter[2]]
-            for rpc, height in enumerate(RPC_heights):
-                t = (height-optimised_centroid[2])/optimised_d[2]
-                x = np.append(x, optimised_centroid[0] + optimised_d[0]*t)
-                y = np.append(y, optimised_centroid[1] + optimised_d[1]*t)
-                z = np.append(z, height)
-            y = [dimensions[1] - i for i in y]
-            # Plot points with a red connecting line
-            ax.scatter(x, y, z, color='blue', s=20)
-            ax.plot(x, y, z, color='purple', linewidth=2)
+        for cluster in track_data[2]:
+            if cluster.rpc < 3:
+                triplet.append(cluster)
+            elif cluster.rpc == 3:
+                singlet.append(cluster)
+            elif cluster.rpc > 3:
+                doublet.append(cluster)
+
+        for l in [triplet, singlet, doublet]:
+            times = []
+            for cluster in l:
+                all_possible_clusters.remove((cluster.time[0], cluster.coords))
+                times.append(round(float(cluster.time[0]), 1))
+                ax.scatter(cluster.coords[0], dimensions[1] - cluster.coords[1], cluster.coords[2], color='green', s=50, marker = 'x')
+            if times:
+              ax.text(cluster.coords[0], dimensions[1] - cluster.coords[1], cluster.coords[2] + 4,f"{times}", size=10, zorder=1, bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
     
-
-    # Set axis labels
+    # Plot remaining clusters
+    if all_possible_clusters:
+        for cluster in all_possible_clusters:
+            time, coords = cluster
+            ax.scatter(coords[0], dimensions[1] - coords[1], coords[2], color='orange', s=50, marker = 'x')
+            #ax.text(coords[0], dimensions[1] - coords[1], coords[2],f"{time}", size=10, zorder=1, bbox=dict(facecolor='orange', alpha=0.5, edgecolor='none'))
+    
+    # Set axis labels, ticks, and limits
     ax.set_xlabel('$\phi$ channels')
     ax.set_ylabel('$\eta$ channels')
     ax.set_zlabel('Z [cm]')
-
-
-    ax.set_xticks([i*distance_per_phi_channel for i in range(0, 65, 8)], labels=[str(i) for i in range(0, 65, 8)])
-    ax.set_yticks([i*distance_per_eta_channel for i in range(0, 33, 8)], labels=[str(i) for i in range(0, 33, 8)])
-    # Set axis limits
+    ax.set_xticks([i * distance_per_phi_channel for i in range(0, 65, 8)], labels=[str(i) for i in range(0, 65, 8)])
+    ax.set_yticks([i * distance_per_eta_channel for i in range(0, 33, 8)], labels=[str(i) for i in range(0, 33, 8)])
     ax.set_xlim(0, dimensions[0])
     ax.set_ylim(0, dimensions[1])
+    ax.set_zlim(0, 130)
     ax.set_title(title)
-    ax.get_proj = lambda: np.dot(Axes3D.get_proj(ax), np.diag([1, dimensions[1]/dimensions[0], 1, 1]))
+
+    # Adjust projection for axis scaling
+    ax.get_proj = lambda: np.dot(Axes3D.get_proj(ax), np.diag([1, dimensions[1] / dimensions[0], 1, 1]))
+    ax.invert_yaxis()
     ax.autoscale()
     ax.view_init(elev=30, azim=-130)
-    ax.invert_yaxis()
-    ax.set_zlim(0, 130)
-    
+
+    # Save or show the plot
     if save:
-        plt.savefig("video//images_video//"+title+".png")
+        plt.savefig(f"video//images_video//{title}.png")
     else:
         plt.show()
 
