@@ -28,14 +28,64 @@ distance_per_eta_channel = 2.9844 #cm
 #there was an idea that the uncertainty is proportional to the cluster size
 #Maybe it is right, maybe it is not
      
-
-
 dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//data//"
 with open(dir_path + "tot_mean.pkl", "rb") as f:
     tot_mean = pickle.load(f)
 with open(dir_path + "tot_std.pkl", "rb") as f:
     tot_std = pickle.load(f)
+
+
+
+
+class Cluster():
+    def __init__(self, event_num, rpc, hits):
+        self.event_num = event_num
+        self.rpc = rpc
+        #phi, eta
+        self.channel_position, self.hits = self.add_hits(hits[0], hits[1])
+        self.size = [len(self.hits[0]), len(self.hits[1])]
+        self.time = self.get_time() #[time, uncertainty]
+        self.coords, self.var = self.calculate_coords()
+        #x, y, z #var_x, var_y, var_z
         
+    def get_time(self):
+        #take time from eta (triggers)
+        time = min([hit.time - hit.channel*tot_speed_factor for hit in self.hits[1]])
+        #time walk
+        time -= tof_offsets[self.rpc][0]
+        var = tot_std[self.rpc][self.channel_position[0]][self.channel_position[1]]**2
+        var += tof_offsets[self.rpc][1]**2
+        return [time, var]
+    
+    def add_hits(self, phi_hits, eta_hits):
+        channel_position = [0, 0]
+        if phi_hits:
+            first_phi = min(phi_hits, key = lambda hit: hit.time)
+            channel_position[0] = first_phi.channel
+        if eta_hits:
+            first_eta = min(eta_hits, key = lambda hit: hit.time)
+            channel_position[1] = first_eta.channel
+        return channel_position, [phi_hits, eta_hits]
+        
+    def calculate_coords(self):
+        if not self.hits[0] or not self.hits[1]:
+            return None
+        
+        phi_channel, eta_channel = self.channel_position
+        x = (phi_channel + 0.5) * distance_per_phi_channel
+        y = ((31 - eta_channel) + 0.5) * distance_per_eta_channel
+        var_x = (1 * distance_per_phi_channel) ** 2 / 12
+        var_y = (1 * distance_per_eta_channel) ** 2 / 12
+        if std_proportional_to_cluster_size:
+            var_x *= self.size[0]*2
+            var_y *= self.size[1]**2
+
+        z = RPC_heights[self.rpc]
+        
+        return [x, y, z], [var_x, var_y, 0]
+
+
+
 #time of flight, angles, chi2,...
 class Track():
     def __init__(self, clusters):
@@ -47,8 +97,7 @@ class Track():
             self.event_num = clusters[0].event_num
             self.cosmic = (self.coordinates[-1][0] - self.coordinates[0][0]) < 0
         self.direction = np.array([0.0, 0.0, 0.0, 0.0]) #t,x,y,z
-        self.angles = None #phi, theta
-        self.speed = 1 #c
+        self.angles = [None, None] #theta, phi
         self.chi2 = 100 #arbitrary high value
 
     def __bool__(self):
@@ -77,8 +126,10 @@ class Track():
         
         self.direction = V[0, :]
         self.direction[0] = 0.0 #time should be the same
+        if self.direction[3] < 0:
+            self.direction = -self.direction
         self.direction = normalize(self.direction) #unit vector
-        self.find_angles()   
+        self.angles = find_angles(self.direction[1:])   
         self.calculate_chi2()
         return True
     
@@ -99,18 +150,6 @@ class Track():
         doF = i - 6
         self.chi2 = chi2/ doF
         return self.chi2
-    
-    def find_angles(self):
-        x,y,z = self.direction[1:]
-        r = math.sqrt(x**2 + y**2 + z**2)
-        # θ (theta) is the polar angle (from the z-axis)
-        theta = math.acos(z / r)
-        # φ (phi) is the azimuthal angle (from the x-axis in the xy-plane)
-        phi = math.atan2(y, x)
-        self.angles = [phi, theta]
-        return [phi, theta]
-
-
 
 class Vertex(Track): #vertex looks like a track in a triplet, double in a singlet + doublet
     def __init__(self, clusters, inside = False):
@@ -119,6 +158,7 @@ class Vertex(Track): #vertex looks like a track in a triplet, double in a single
         self.point = np.array([0.0, 0.0, 0.0]) #point of intersection
         self.approach = None #distance between the two tracks
         self.opening_angle = None #angle between the two finals
+        self.angles = [None, None]
         self.inside = inside #is it inside the detector?
         if self.inside:
             self.initial = Track([]) #initial track if inside
@@ -167,14 +207,18 @@ class Vertex(Track): #vertex looks like a track in a triplet, double in a single
         
         #include intersection
         self.optimise()
-        self.calculate_opening_angle()
+        self.calculate_angles()
         return True
     
-    def calculate_opening_angle(self):
+    def calculate_angles(self):
         a = self.final[0].direction[1:]
         b = self.final[1].direction[1:]
-        self.opening_angle = np.arccos(np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))
-        return self.opening_angle
+        normal = np.cross(a, b)
+        if normal[2] < 0:
+            normal = -normal
+        self.angles = find_angles(normal)
+        self.opening_angle = np.arccos(np.dot(a,b))
+        return self.opening_angle, self.angles
     
     def calculate_chi2(self):
         self.chi2 = self.final[0].chi2 + self.final[1].chi2
@@ -211,7 +255,7 @@ class Vertex(Track): #vertex looks like a track in a triplet, double in a single
             for track in self.final:
                 track.centroid = np.append(np.array([0.0]), self.point)
                 track.direction = np.append(np.array([0.0]), track.direction)
-            self.calculate_opening_angle()
+            self.calculate_angles()
             return True
         return False        
 
@@ -224,57 +268,16 @@ class Vertex(Track): #vertex looks like a track in a triplet, double in a single
         return np.arcsin(abs(np.dot(a,self.initial.direction[1:])))*180/np.pi #15 degrees deviation max
 
     
+def find_angles(vector):
+    x,y,z = vector
+    r = math.sqrt(x**2 + y**2 + z**2)
+    # θ (theta) is the polar angle (from the z-axis)
+    theta = math.acos(z / r)
+    # φ (phi) is the azimuthal angle (from the x-axis in the xy-plane)
+    phi = math.atan2(y, x)
+    return [theta, phi]
 
 
-
-class Cluster():
-    def __init__(self, event_num, rpc, hits):
-        self.event_num = event_num
-        self.rpc = rpc
-        #phi, eta
-        self.channel_position, self.hits = self.add_hits(hits[0], hits[1])
-        self.size = [len(self.hits[0]), len(self.hits[1])]
-        self.time = self.get_time() #[time, uncertainty]
-        self.coords, self.var = self.calculate_coords()
-        #x, y, z #var_x, var_y, var_z
-        
-    def get_time(self):
-        #take time from eta (triggers)
-        time = min([hit.time - hit.channel*tot_speed_factor for hit in self.hits[1]])
-        #time walk
-        time -= tof_offsets[self.rpc][0]
-        var = tot_std[self.rpc][self.channel_position[0]][self.channel_position[1]]**2
-        var += tof_offsets[self.rpc][1]**2
-        return [time, var]
-    
-    def add_hits(self, phi_hits, eta_hits):
-        channel_position = [0, 0]
-        if phi_hits:
-            first_phi = min(phi_hits, key = lambda hit: hit.time)
-            channel_position[0] = first_phi.channel
-        if eta_hits:
-            first_eta = min(eta_hits, key = lambda hit: hit.time)
-            channel_position[1] = first_eta.channel
-        return channel_position, [phi_hits, eta_hits]
-        
-    def calculate_coords(self):
-        if not self.hits[0] or not self.hits[1]:
-            return None
-        
-        phi_channel, eta_channel = self.channel_position
-        x = (phi_channel + 0.5) * distance_per_phi_channel
-        y = ((31 - eta_channel) + 0.5) * distance_per_eta_channel
-        var_x = (1 * distance_per_phi_channel) ** 2 / 12
-        var_y = (1 * distance_per_eta_channel) ** 2 / 12
-        if std_proportional_to_cluster_size:
-            var_x *= self.size[0]*2
-            var_y *= self.size[1]**2
-
-        z = RPC_heights[self.rpc]
-        t = self.time
-        var_t = 1 # let me ponder how to get that value here
-        
-        return [x, y, z], [var_x, var_y, 0]
 
 
 class Reconstructor():
@@ -438,13 +441,16 @@ class Reconstructor():
         t = (track.centroid[3] - h)/track.direction[3]
         x = track.centroid[1] + t*track.direction[1]
         y = track.centroid[2] + t*track.direction[2]
-
+        return x > 0 and x < 64*distance_per_phi_channel and y > 0 and y < 32*distance_per_eta_channel
+    
      
         #how many tracks are detected
         
 
 def find_best_track(event_clusters, RPC_excluded = None):
     #check empty RPCs
+    max_cluster_size = 3
+    event_clusters = [[cluster for cluster in rpc if max(cluster.size) <= max_cluster_size] for rpc in event_clusters]
     empty_RPC_count = sum(1 for rpc in event_clusters if rpc == [])
     if empty_RPC_count > 3:
         return []
@@ -464,8 +470,6 @@ def find_best_track(event_clusters, RPC_excluded = None):
         test_coords = event_clusters[RPC_excluded]
         event_clusters[RPC_excluded] = []
     #Reject big clusters
-    max_cluster_size = 3
-    event_clusters = [[cluster for cluster in rpc if max(cluster.size) <= max_cluster_size] for rpc in event_clusters]
     for rpc in range(6):
         if event_clusters[rpc] == []:
             event_clusters[rpc] = [None]
