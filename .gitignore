@@ -18,7 +18,7 @@ pip-delete-this-directory.txt
 *.code-workspace
 
 # Mine
-data/*
+data/maybe/*
 images_video/*
 *.png
 *.mp4
