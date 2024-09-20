@@ -1,6 +1,6 @@
 <table>
   <tr>
-    <td><h1>proAnubis Data Analysis System</h1></td>
+    <td><h1>proANUBIS Data Analysis System</h1></td>
     <td><img src="data/readme_img/ANUBISLogo.png" alt="logo" style="height: 70px; margin-left: 15px;" /></td>
   </tr>
 </table>
