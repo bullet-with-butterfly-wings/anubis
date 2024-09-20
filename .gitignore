@@ -19,8 +19,7 @@ pip-delete-this-directory.txt
 
 # Mine
 data/maybe/*
-images_video/*
-*.png
+data/chunks/*
+video/*
 *.mp4
-*.pkl
 *.pdf
