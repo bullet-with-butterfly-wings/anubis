@@ -49,8 +49,8 @@ class Cluster():
         #x, y, z #var_x, var_y, var_z
         
     def get_time(self):
-        #take time from eta (triggers)
-        time = min([hit.time - hit.channel*tot_speed_factor for hit in self.hits[1]])
+        #take time from eta (triggers) #not now
+        time = min([hit.time - hit.channel*tot_speed_factor for hit in self.hits[0]])
         #time walk
         time -= tof_offsets[self.rpc][0]
         var = tot_std[self.rpc][self.channel_position[0]][self.channel_position[1]]**2

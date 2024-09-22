@@ -5,6 +5,13 @@ import numpy as np
 import  os
 import glob
 import random
+import importlib
+import sys
+from tqdm import tqdm
+import  os
+import cv2
+import glob
+from datetime import datetime 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 plt.rc('text', usetex=True)
@@ -100,6 +107,33 @@ def hitHeatMap(event): #actually returns 6 heatmaps, one for each rpc
                 else:
                     heatMaps[hit.rpc][:,hit.channel] += np.ones(32)
     return heatMaps
+
+def produce_video_images(chunk, tag = ""):
+    with tqdm(total=len(chunk)) as pbar:
+        for evt_num, evt in enumerate(chunk):
+        #[print(hit) for hit in VTools.all_hits_event(evt)]
+            maps = hitHeatMap(evt)
+            for rpc in range(6):
+                plt.imshow(maps[rpc], interpolation='nearest')
+                plt.title(f'{tag}: Event {evt_num} RPC {rpc}')
+                plt.savefig(f'video/images_video/{tag+str(10*evt_num+rpc)}.png')
+            pbar.update(1)
+
+def compose_video(title = "video", rpc = [0,1,2,3,4,5]):
+    image_folder = 'video/images_video'
+    images = [img for img in os.listdir(image_folder) if img.endswith(tuple([str(i)+".png" for i in rpc]))]
+    frame = cv2.imread(os.path.join(image_folder, images[0]))
+    height, width, layers = frame.shape
+
+
+    video_name = f'video/{title}.mp4'
+    video = cv2.VideoWriter(video_name, cv2.VideoWriter_fourcc(*'mp4v'), 8, (width,height))
+
+    for image in images:
+        video.write(cv2.imread(os.path.join(image_folder, image)))
+
+    cv2.destroyAllWindows()
+    video.release()
 
 def event_3d_plot(proAnubis_event, title, save=False):
     fig = plt.figure()
