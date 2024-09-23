@@ -1,7 +1,10 @@
-<p>
-  <h1 style="display: inline;">proAnubis Data Analysis System</h1>
-  <img src="data/readme_img/ANUBISLogo.png" alt="logo" style="height: 70px; vertical-align: middle; margin-left: 15px;" />
-</p>
+<table>
+  <tr>
+    <td><h1>proANUBIS Data Analysis System</h1></td>
+    <td><img src="data/readme_img/ANUBISLogo.png" alt="logo" style="height: 70px; margin-left: 15px;" /></td>
+  </tr>
+</table>
+
 
 The Standard Model is one of the most accurate scientific theories ever devised and has passed decades of experimental tests. Yet, there are many fundamental questions that can not be answered without physics beyond the Standard Model (BSM). This includes the nature of dark matter, neutrino masses, the origin of the
 matter-antimatter asymmetry, a theory of quantum gravity, and the puzzling unnaturalness of the electroweak scale. Many proposed theoretical scenarios that address these questions predict particles with long lifetimes on
