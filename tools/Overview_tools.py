@@ -151,7 +151,7 @@ def alignment(chunks, times = None, pdf = None):
     
 def bvg(mets, window_size = 50, times = None, pdf = None):
     fig, ax = plt.subplots(figsize=(10, 8))    
-    #mets = np.convolve(mets, np.ones(np.ones(window_size)/window_size))
+    mets = np.convolve(mets, np.ones(np.ones(window_size)/window_size))
     colors = ['blue', 'green', 'red', 'purple', 'orange']
     for tdc in range(5):
         met = mets[tdc]
@@ -257,6 +257,13 @@ def abs_bvg_hits(chunks, times = None,  pdf = None, per_rpc = False): #actually 
     plt.close()
     print("Absolute BVG Done")
     return hit_counts
+
+def efficiency(chunks, pdf = None):
+    reconstructor = RTools.Reconstructor()
+    for processedEvents, event_chunk in enumerate(chunks[1:]):
+        reconstructor.update_event(event_chunk)
+        reconstructor.reconstruct_tracks(event_chunk)[0]
+        
 
 """
 def efficiency(chunks, residual = False, pdf = None):
