@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 time_range = (150,350)
+RPC_heights = [0.6,1.8,3.0,61.8,121.8,123] #Heights of middle point of each RPC, measured from the bottom of the Triplet Low RPC. Units are cm.
 interval = 100 # Set your monitoring chunck size
 order = [[0,1], [1,2], [2,3], [3,4]] # Order what you want to align
 
@@ -258,11 +259,54 @@ def abs_bvg_hits(chunks, times = None,  pdf = None, per_rpc = False): #actually 
     print("Absolute BVG Done")
     return hit_counts
 
-def efficiency(chunks, pdf = None):
-    reconstructor = RTools.Reconstructor()
-    for processedEvents, event_chunk in enumerate(chunks[1:]):
-        reconstructor.update_event(event_chunk)
-        reconstructor.reconstruct_tracks(event_chunk)[0]
+def efficiency(chunks, tolerance = np.arange(0,20,1), pdf = None):
+    possible = [0 for rpc in range(6)]
+    fail = [0 for rpc in range(6)]
+    success =  [{distance: 0 for distance in tolerance} for rpc in range(6)]#[success, possible]
+    for chunk_num, event_chunk in enumerate(chunks):
+        reconstructor = RTools.Reconstructor()
+        chunk_tracks = reconstructor.reconstruct_tracks(event_chunk)
+        for evt_num, track in enumerate(chunk_tracks):
+            if not len(track) == 1 or isinstance(track[0], RTools.Vertex):
+                continue
+            evt_clust = reconstructor.clusters[evt_num]
+            for rpc in range(6):
+                test_clusters = evt_clust[rpc]
+                evt_clust[rpc] = []
+                new_track = RTools.find_best_track(evt_clust)
+                if not len(new_track) == 1 or isinstance(new_track[0], RTools.Vertex):
+                    fail[rpc] += 1
+                    continue
+                new_track = new_track[0]
+           
+                if RTools.does_hit_rpc(new_track, rpc):
+                    possible[rpc] += 1
+                    p = (RPC_heights[rpc]-new_track.centroid[3])/new_track.direction[3] #parameter of the line
+                    ideal = [new_track.centroid[1]+p*new_track.direction[1], new_track.centroid[2]+p*new_track.direction[2]]
+                    closest_distance = 1000
+                    for cluster in test_clusters:
+                        cluster_distance = np.sqrt((ideal[0]-cluster.coords[0])**2 + (ideal[1]-cluster.coords[1])**2)
+                        closest_distance = min(closest_distance, cluster_distance)    
+                    for distance in tolerance:
+                        if distance > closest_distance:
+                            success[rpc][distance] += 1     
+                    evt_clust[rpc] = test_clusters   
+    fig, ax = plt.subplots(figsize=(10, 8))
+    for rpc in range(6):
+        if possible[rpc]:
+            efficiency = [success[rpc][distance]/possible[rpc] for distance in tolerance]
+            ax.plot(tolerance, efficiency, label=f'RPC {rpc}')
+    ax.set_title('Efficiency of the reconstruction')
+    ax.set_ylabel('Efficiency')
+    ax.set_xlabel('Tolerance')
+    ax.legend()
+    if pdf:
+        pdf.savefig()
+    else:
+        plt.show()
+    print("Possible Reconstructions", possible)
+    print("Efficiency Done")
+
         
 
 """

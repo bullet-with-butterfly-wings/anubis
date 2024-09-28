@@ -182,7 +182,7 @@ class Vertex(Track): #vertex looks like a track in a triplet, double in a single
                 else:
                     final_clusters.append(cluster)
 
-                candidates = find_best_track(final_clusters, 0)
+                candidates = find_best_track(final_clusters)
                 if len(candidates) < 2: # does it have two tracks?  
                     return self.optimise()
                 self.final = candidates
@@ -436,18 +436,18 @@ class Reconstructor():
                 else:
                     pass
 
-    def does_hit_rpc(track, rpc):
-        h = RPC_heights[rpc]
-        t = (track.centroid[3] - h)/track.direction[3]
-        x = track.centroid[1] + t*track.direction[1]
-        y = track.centroid[2] + t*track.direction[2]
-        return x > 0 and x < 64*distance_per_phi_channel and y > 0 and y < 32*distance_per_eta_channel
+def does_hit_rpc(track, rpc):
+    h = RPC_heights[rpc]
+    t = (track.centroid[3] - h)/track.direction[3]
+    x = track.centroid[1] + t*track.direction[1]
+    y = track.centroid[2] + t*track.direction[2]
+    return x > 0 and x < 64*distance_per_phi_channel and y > 0 and y < 32*distance_per_eta_channel
     
      
         #how many tracks are detected
         
 
-def find_best_track(event_clusters, RPC_excluded = None):
+def find_best_track(event_clusters):
     #check empty RPCs
     max_cluster_size = 3
     event_clusters = [[cluster for cluster in rpc if max(cluster.size) <= max_cluster_size] for rpc in event_clusters]
@@ -462,13 +462,11 @@ def find_best_track(event_clusters, RPC_excluded = None):
         cross_chamberness += 1
     if any(event_clusters[4:6]): #doublet
         cross_chamberness += 1
+    
+  
 
     if cross_chamberness < 2:
         return []
-    #If you are testing, exclude the RPC under test
-    if RPC_excluded:
-        test_coords = event_clusters[RPC_excluded]
-        event_clusters[RPC_excluded] = []
     #Reject big clusters
     for rpc in range(6):
         if event_clusters[rpc] == []:
