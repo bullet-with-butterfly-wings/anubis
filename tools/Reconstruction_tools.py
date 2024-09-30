@@ -42,7 +42,7 @@ class Cluster():
         self.event_num = event_num
         self.rpc = rpc
         #phi, eta
-        self.channel_position, self.hits = self.add_hits(hits[0], hits[1])
+        self.channel, self.hits = self.add_hits(hits[0], hits[1])
         self.size = [len(self.hits[0]), len(self.hits[1])]
         self.time = self.get_time() #[time, uncertainty]
         self.coords, self.var = self.calculate_coords()
@@ -53,25 +53,25 @@ class Cluster():
         time = min([hit.time - hit.channel*tot_speed_factor for hit in self.hits[0]])
         #time walk
         time -= tof_offsets[self.rpc][0]
-        var = tot_std[self.rpc][self.channel_position[0]][self.channel_position[1]]**2
+        var = tot_std[self.rpc][self.channel[0]][self.channel[1]]**2
         var += tof_offsets[self.rpc][1]**2
         return [time, var]
     
     def add_hits(self, phi_hits, eta_hits):
-        channel_position = [0, 0]
+        channel = [0, 0]
         if phi_hits:
             first_phi = min(phi_hits, key = lambda hit: hit.time)
-            channel_position[0] = first_phi.channel
+            channel[0] = first_phi.channel
         if eta_hits:
             first_eta = min(eta_hits, key = lambda hit: hit.time)
-            channel_position[1] = first_eta.channel
-        return channel_position, [phi_hits, eta_hits]
+            channel[1] = first_eta.channel
+        return channel, [phi_hits, eta_hits]
         
     def calculate_coords(self):
         if not self.hits[0] or not self.hits[1]:
             return None
         
-        phi_channel, eta_channel = self.channel_position
+        phi_channel, eta_channel = self.channel
         x = (phi_channel + 0.5) * distance_per_phi_channel
         y = ((31 - eta_channel) + 0.5) * distance_per_eta_channel
         var_x = (1 * distance_per_phi_channel) ** 2 / 12
@@ -289,7 +289,7 @@ class Reconstructor():
         self.collector = [[] for rpc in range(6)]
         self.chi2 = []
                                                  
-    def update_event(self, event_chunk):
+    def update_chunk(self, event_chunk):
         self.event_chunk = event_chunk
         self.event_counter = 0
 
@@ -410,7 +410,7 @@ class Reconstructor():
 
 
     def reconstruct_tracks(self, chunk):
-        self.update_event(chunk)
+        self.update_chunk(chunk)
         self.clusters = self.cluster()
         for evt_num, event_clusters in enumerate(self.clusters):
             tracks = find_best_track(event_clusters)
