@@ -331,8 +331,8 @@ class Reconstructor():
         return tof
 
             
-    def cluster(self):
-        speed = 0.15204446322001586 #(25/32) ns / channel
+    def cluster(self, time_window = 5):
+        speed = 0.12629203 #0.15204446322001586 #(25/32) ns / channel increase phi
         result = [] #[event_num, eta_time, [phi_hits, eta_hits]]
         for event_num, event in enumerate(self.event_chunk):
             phiHits, etaHits = populate_hits(event, self.event_counter)

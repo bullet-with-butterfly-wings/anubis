@@ -40,6 +40,8 @@ class Tanalyser():
             self.tot_hits[index] = np.array([])
         self.tot_mean = np.full((6, 64, 32), 13.0)
         self.tot_std = np.full((6, 64, 32), 1.0)
+        self.offsets = np.full((6, 32), 13.0)
+        self.speed = 0.0
         
     def calculate_tot(self, chunks):
         # filter out the shady tracks
@@ -65,7 +67,7 @@ class Tanalyser():
                 for eta in range(32):
                     if len(self.tot_hits[rpc][phi][eta]) > 3:
                         #try to fit a gaussian
-                        hist, bins = np.histogram(self.tot_hits[rpc][phi][eta], bins=40, range=(-5, 20))
+                        hist, bins = np.histogram(self.tot_hits[rpc][phi][eta], bins=np.arange(-5, 20, 0.8), range=(-5, 20))
                         bins = bins[:-1]
                         try:
                             popt, pcov = curve_fit(gaus, bins, hist, p0=[1, 13, 5])
@@ -75,6 +77,43 @@ class Tanalyser():
                             self.tot_mean[rpc][phi][eta] = np.mean(self.tot_hits[rpc][phi][eta])
                             self.tot_std[rpc][phi][eta] = np.std(self.tot_hits[rpc][phi][eta])
 
+    def caclulate_offset_speed(self):
+        #calculate the offset and speed of the TOT
+        speed_data = []
+        for rpc in range(6):
+            for eta in range(32):
+                eta_stripe = self.tot_mean[rpc, :, eta]
+                x = []
+                y = []
+                for phi in range(64):
+                    if eta_stripe[phi] != 13:
+                        y.append(eta_stripe[phi])
+                        x.append(phi)
+                #fit a line
+                if len(y) > 10:
+                    popt, pcor = curve_fit(line, x, y, p0=[1, 13])
+                    speed_data.append(popt[0])
+                #i do not need intercept
+        self.speed = np.mean(speed_data)
+        for rpc in range(6):
+            for eta in range(32):
+                eta_stripe = self.tot_mean[rpc, :, eta]
+                x = []
+                y = []
+                for phi in range(64):
+                    if eta_stripe[phi] != 13:
+                        y.append(eta_stripe[phi])
+                        x.append(phi)
+                if len(y) > 10:
+                    popt, pcor = curve_fit(lambda x, c: line(x, self.speed, c), x, y, p0=[13])
+                    self.offsets[rpc, eta] = popt[0] + eta*self.speed
+                else:
+                    print(rpc, eta)
+        hist, bins = np.histogram(speed_data)
+        bins = bins[:-1]
+        plt.plot(bins, hist, drawstyle='steps-mid')
+        plt.show()
+        return self.offsets, self.speed
 
     def plot_tot(self):
         fig_ratio = (20,12)  # Width: 10, Height: 20 to achieve 1:2 ratio
@@ -141,12 +180,12 @@ class Tanalyser():
         # Close the PDF
         pdf_pages.close()
 
-    def plot_point(self, rpc,phi_channel, eta_channel, bins_num = 40):
+    def plot_point(self, rpc,phi_channel, eta_channel):
         fig, ax = plt.subplots(figsize=(10, 8))
         data = self.tot_hits[rpc][phi_channel][eta_channel]
         
         try:
-            hist, bins = np.histogram(data, bins=bins_num, range=(-5, 20))
+            hist, bins = np.histogram(data, bins=np.arange(-5, 20, 0.8), range=(-5, 20))
             bins = bins[:-1]
             popt, pcov = curve_fit(gaus, bins, hist, p0=[1, 13, 5])
             fitX = np.linspace(min(bins), max(bins), 400)
@@ -172,4 +211,7 @@ class Tanalyser():
         plt.show()
 
 def gaus(x, a, x0, sigma):
-            return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
+    return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
+
+def line(x, m, c):
+    return m*x + c
