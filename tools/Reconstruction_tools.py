@@ -331,7 +331,7 @@ class Reconstructor():
         return tof
 
             
-    def cluster(self, time_window = 5):
+    def cluster(self):
         speed = 0.15204446322001586 #(25/32) ns / channel
         result = [] #[event_num, eta_time, [phi_hits, eta_hits]]
         for event_num, event in enumerate(self.event_chunk):
@@ -391,8 +391,8 @@ class Reconstructor():
                 leaderboard = []
                 for (phi_time, phi_channel, phi_hits), (eta_time, eta_channel, eta_hits) in product(phi_coincident, eta_coincident):
                     time_difference = abs(eta_time - phi_time - tot_mean[rpc][phi_channel][eta_channel])/tot_std[rpc][phi_channel][eta_channel]
-                    #is_time_coincident = abs(time_difference) < 5
-                    is_time_coincident = True
+                    is_time_coincident = abs(time_difference) < 5
+                    #is_time_coincident = True
                     if is_time_coincident:
                         leaderboard.append([time_difference, [phi_hits, eta_hits]])
 
