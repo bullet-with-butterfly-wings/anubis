@@ -182,7 +182,7 @@ def event_3d_plot(proAnubis_event, title, save=False):
     print(print_hits)
     # Reconstruct tracks
     reconstructor = RTools.Reconstructor()
-    reconstructor.update_event([proAnubis_event])
+    reconstructor.update_chunk([proAnubis_event])
     all_possible_clusters = [(cluster.time[0], cluster.coords) for cluster in list(chain(*reconstructor.cluster()[0]))]
     tracks = reconstructor.reconstruct_tracks([proAnubis_event])[0]
     tracks_to_plot = []

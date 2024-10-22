@@ -389,7 +389,7 @@ def bcr_histogram(data, atlas = False, plot = True):
         plt.show()
     return counts
 
-def positionn_filter_atlas(data, eta_func, phi_func):
+def position_filter_atlas(data, eta_func, phi_func):
     with tqdm(total=len(data.values)) as pbar:
         good_indices = []
         for i in range(len(data.values)):
