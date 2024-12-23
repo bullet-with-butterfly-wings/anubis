@@ -4,13 +4,11 @@ matplotlib.use('TkAgg')  # or 'Qt5Agg', 'GTK3Agg', etc.
 import mplhep as hep
 hep.style.use([hep.style.ATLAS])
 import sys
-# import ANUBIS_triggered_functions as ANT
+sys.path.append(".")
 import matplotlib.backends.backend_pdf
 from itertools import product
 import numpy as np
-# from scipy.stats import normpip install pillow
-sys.path.insert(1, 'Osiris Temp\processing\python')
-import Analysis_tools as ATools
+from Osiris.processing.python import Analysis_tools as ATools
 from scipy.optimize import minimize 
 import math
 from itertools import product
@@ -28,7 +26,7 @@ distance_per_eta_channel = 2.9844 #cm
 #there was an idea that the uncertainty is proportional to the cluster size
 #Maybe it is right, maybe it is not
      
-dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//data//"
+dir_path = "/home/jonas/Coding/anubis/data/"
 with open(dir_path + "tot_mean.pkl", "rb") as f:
     tot_mean = pickle.load(f)
 with open(dir_path + "tot_std.pkl", "rb") as f:

@@ -21,7 +21,7 @@ sys.path.append(dir_path + "Osiris//processing//python")
 sys.path.append(dir_path + "Osiris//monitoring//python")
 sys.path.append(dir_path + "tools")
 
-import Analysis_tools as ATools
+from Osiris.processing.python import Analysis_tools as ATools
 import proAnubis_Analysis_Tools
 import Reconstruction_tools as RTools
 import mplhep as hep

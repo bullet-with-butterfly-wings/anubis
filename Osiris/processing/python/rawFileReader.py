@@ -1,8 +1,11 @@
-#from rawEventBuilder import eventBuilder
+
+
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import rawEventBuilder
 import struct
 import datetime
-import os
 import importlib
 from tqdm import tqdm
 import Analysis_tools as aTools

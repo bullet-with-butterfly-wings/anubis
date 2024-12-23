@@ -5,17 +5,17 @@ import  os
 import pickle
 import glob
 
-dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//" # insert your directory path
-sys.path.append(dir_path + "Osiris//processing//python")
+dir_path = "/home/jonas/Coding/anubis" # insert your directory path
+sys.path.append(dir_path + "Osiris/processing/python")
 sys.path.append(dir_path + "tools")
 
 from matplotlib.backends.backend_pdf import PdfPages
-import Analysis_tools as ATools
+from Osiris.processing.python import Analysis_tools as ATools
 import proAnubis_Analysis_Tools
 import Reconstruction_tools as RTools
 import mplhep as hep
 import Timing_tools as TTools
-import rawFileReader
+from Osiris.processing.python import rawFileReader
 from datetime import datetime
 hep.style.use([hep.style.ATLAS])
 import matplotlib.pyplot as plt
@@ -23,52 +23,53 @@ import numpy as np
 
 time_range = (150,350)
 RPC_heights = [0.6,1.8,3.0,61.8,121.8,123] #Heights of middle point of each RPC, measured from the bottom of the Triplet Low RPC. Units are cm.
-interval = 100 # Set your monitoring chunck size
+interval = 100 # Set your monitoring chunk size
 order = [[0,1], [1,2], [2,3], [3,4]] # Order what you want to align
 
-
-def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = None, end = None):
+#two modes - chunks, times
+def get_chunks(file_name, mode = "chunks", range = (0, 10_000), fReader = None):
     if not fReader:
-        fReader = rawFileReader.fileReader(dir_path+"data//"+file_name) # load in the classs object    
+        fReader = rawFileReader.fileReader(dir_path+"data//"+file_name) # load in the classs object 
+    if mode not in ["chunks", "times"]:
+        raise ValueError("Invalid mode")   
+    
+    start, end = range
+    if mode == "chunks" and type(start) == str or mode == "times" and type(start) == int:
+        raise ValueError("Wrong mode and range combination.")
     processedEvents = 0 # Initialisation
-    max_process_event_chunk = max_process_event//interval
     last_reset = 0
     time = []
     chunks = []
-    #tdc_mets = [[] for tdc in range(5)]
-    #Tot_TDC_info = [[] for tdc in range(5)]#
     initial_chunk = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = False)
     initial_time = max([initial_chunk[0].tdcEvents[tdc].time for tdc in range(5) if initial_chunk[0].tdcEvents[tdc].time])
     print("Initial time", initial_time, datetime.timestamp(initial_time))
-    if start:#if it is string, its a date
-        if type(start) == str:
-            goal = datetime.strptime(start, '%Y-%m-%d %H:%M:%S')
-            event_time = initial_time
-            with tqdm(total=round((goal-event_time).total_seconds()), desc=f"Skipping Events {file_name}", unit='Events') as pbar:        
-                while event_time < datetime.strptime(start, '%Y-%m-%d %H:%M:%S'):
-                    fReader.skip_events(2_000)
-                    try:
-                        chunk = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = False)
-                    except Exception as e:
-                        print(e)
-                        return chunks, time, fReader
-                        
-                    if chunk:
-                        event_time = max([chunk[0].tdcEvents[tdc].time for tdc in range(5) if chunk[0].tdcEvents[tdc].time])
-                        pbar.update(round(event_time.timestamp()-pbar.n - initial_time.timestamp()))
-        else:  
-            with tqdm(total=start, desc=f"Skipping Events {file_name}", unit='Events') as pbar:
-                event_counter = 0
-                while event_counter < start:
-                    fReader.skip_events(2_000)
-                    event_counter += 2_000
-                    pbar.update(2_000)
-
-        print("Skip time", event_time)          
-    if end:
+    if mode == "times":
+        goal = datetime.strptime(start, '%Y-%m-%d %H:%M:%S')
+        event_time = initial_time
+        with tqdm(total=round((goal-event_time).total_seconds()), desc=f"Skipping Events {file_name}", unit='Events') as pbar:        
+            while event_time < datetime.strptime(start, '%Y-%m-%d %H:%M:%S'):
+                fReader.skip_events(2_000)
+                try:
+                    chunk = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = False)
+                except Exception as e:
+                    print(e)
+                    return chunks, time, fReader
+                    
+                if chunk:
+                    event_time = max([chunk[0].tdcEvents[tdc].time for tdc in range(5) if chunk[0].tdcEvents[tdc].time])
+                    pbar.update(round(event_time.timestamp()-pbar.n - initial_time.timestamp()))
+        print("Skip events", event_time)
         total_limit = (datetime.strptime(end, '%Y-%m-%d %H:%M:%S') - datetime.strptime(start, '%Y-%m-%d %H:%M:%S')).total_seconds()
         unit = "seconds"
-    else:
+
+    if mode == "chunks":  
+        with tqdm(total=start, desc=f"Skipping Events {file_name}", unit='Events') as pbar:
+            event_counter = 0
+            while event_counter < start:
+                fReader.skip_events(1_000)
+                event_counter += 1_000
+                pbar.update(1_000)
+        print("Skip events", event_counter)
         total_limit = max_process_event_chunk
         unit = 'Chunks'
         
@@ -78,7 +79,7 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
             while running:
                 processedEvents += 1
                 try:
-                    event_chunk, tdc_met, TDC_info = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = True) # get the aligned events
+                    event_chunk, tdc_met, TDC_info = fReader.get_aligned_events(order=order, interval=interval, extract_tdc_mets = False) # get the aligned events
                 except Exception as e:
                     print(e)
                     max_process_event_chunk = processedEvents
@@ -94,20 +95,17 @@ def get_chunks(file_name, max_process_event = 20_000, fReader = None, start = No
                     last_reset = event_time
                     originTime = event_time
                     
-                #[tdc_mets[i].append(tdc_met[i]) for i in range(5) if tdc_met[i] != 0]
-                #[Tot_TDC_info[i].extend(TDC_info[i]) for i in range(5) if TDC_info[i]]
                 time.append((event_time-originTime).total_seconds())
                 chunks.append(event_chunk)
                 counter += 1
                
-                if end:
+                if mode == "times":
                     pbar.update(round((event_time - datetime.strptime(start, '%Y-%m-%d %H:%M:%S')).total_seconds() - pbar.n, 2))
+                    running = event_time < datetime.strptime(end, '%Y-%m-%d %H:%M:%S')
                 else:     
                     pbar.update(1)
-                if end:
-                    running = event_time < datetime.strptime(end, '%Y-%m-%d %H:%M:%S')
-                else:
                     running = processedEvents < max_process_event_chunk
+                    
     pbar.close()
     print("Ending time:" , event_time)
     print("Number of chunks:", len(chunks))

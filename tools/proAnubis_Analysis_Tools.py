@@ -8,15 +8,10 @@ import matplotlib.colors as colors
 import matplotlib.backends.backend_pdf
 import hist as hi
 import importlib
-#sys.path.insert(1, 'C://Users//Peter//OneDrive - University of Cambridge//Desktop//summer2//Osiris Temp//processing//python')
-sys.path.append(os.path.join(sys.path[0], 'Osiris Temp', 'processing', 'python'))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import Reconstruction_tools as RTools
 import Timing_tools as TTools
-importlib.reload(RTools)
-importlib.reload(TTools)
-import Analysis_tools as ATools
-from scipy.optimize import curve_fit
-
+from Osiris.processing.python import Analysis_tools as ATools 
         
 class Timing_Analyser():
     def __init__(self, event_chunk, processsed_event, diffHists = None,
