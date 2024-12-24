@@ -14,8 +14,7 @@ from tqdm import tqdm
 import pandas
 import pickle
 
-#sys.path.insert(1, 'C://Users//Peter//OneDrive - University of Cambridge//Desktop//summer2//Osiris Temp//processing//python')
-sys.path.append(os.path.join(sys.path[0], 'Osiris Temp', 'processing', 'python'))
+sys.path.append(os.path.join(sys.path[0]))
 import rawFileReader
 import Reconstruction_tools as RTools
 import Timing_tools as TTools

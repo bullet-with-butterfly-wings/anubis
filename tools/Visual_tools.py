@@ -14,13 +14,6 @@ import glob
 from datetime import datetime 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-plt.rc('text', usetex=True)
-# Add the directories to the sys.path
-dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//" # insert your directory path
-sys.path.append(dir_path + "Osiris//processing//python")
-sys.path.append(dir_path + "Osiris//monitoring//python")
-sys.path.append(dir_path + "tools")
-
 from Osiris.processing.python import Analysis_tools as ATools
 import proAnubis_Analysis_Tools
 import Reconstruction_tools as RTools
@@ -30,6 +23,7 @@ from itertools import chain
 import rawFileReader
 
 hep.style.use([hep.style.ATLAS])
+plt.rc('text', usetex=True)
 
 # Specify the directory
 data_list = sorted([f for f in os.listdir("data") if os.path.isfile(os.path.join("data", f))], reverse=True) ##all files in data directory sorted from the newest to the oldest
@@ -263,25 +257,4 @@ def event_3d_plot(proAnubis_event, title, save=False):
         plt.savefig(f"video//images_video//{title}.png")
     else:
         plt.show()
-
-"""
-def hitHeatMap(eventChunk, evt_num):
-    heatMap = np.zeros((32,64))
-    for evt_num, event in enumerate(eventChunk):
-        for tdc in range(5):
-            for word in event.tdcEvents[tdc].words:
-                _, hit = ATools.tdcChanToRPCHit(word, tdc, evt_num)
-""" 
-                
-    # Finally, recontruction is done using cluster information
-"""
-    for tdc in range(5):
-        print(eventChunk[2].tdcEvents[tdc].time)
-        for word in eventChunk[2].tdcEvents[tdc].words:
-            _, hit = ATools.tdcChanToRPCHit(word, tdc, 1)
-            print(hit)
-    """
-   # times_words = [(word & 0xfffff, word) for word in words if (word >> 24) & 0x7f not in bad_channels[tdc]]
-            
-    
 

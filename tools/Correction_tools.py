@@ -3,12 +3,13 @@ import mplhep as hep
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-mpl.use('TkAgg')  # or 'Qt5Agg', 'GTK3Agg', etc.
+mpl.use('TkAgg')  
 hep.style.use([hep.style.ATLAS])
 import sys
-# import ANUBIS_triggered_functions as ANT
-# from scipy.stats import normpip install pillow
-sys.path.insert(1, 'Osiris Temp\processing\python')
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from scipy.optimize import curve_fit
 mpl.rcParams['text.usetex'] = False
 import seaborn as sns
@@ -26,13 +27,13 @@ distance_per_eta_channel = 2.9844 #cm
 #there was an idea that the uncertainty is proportional to the cluster size
 #Maybe it is right, maybe it is not
      
-dir_path = "C://Users//jony//Programming//Python//Anubis//anubis//data//"
+dir_path = "/home/jonas/Coding/anubis/data/"
 with open(dir_path + "tot_mean.pkl", "rb") as f:
     tot_mean = pickle.load(f)
 with open(dir_path + "tot_std.pkl", "rb") as f:
     tot_std = pickle.load(f)
 
-class Tanalyser():
+class TOT_analyser():
     def __init__(self):
         self.tot_hits = np.empty((6, 64, 32), dtype=object)
         # Fill each element with a new empty list
@@ -47,14 +48,15 @@ class Tanalyser():
         # filter out the shady tracks
         for chun_number, chunk in enumerate(chunks):
             reconstructor = RTools.Reconstructor()
-            reconstructor.update_chunk(chunk)
-            chunk_clusters = reconstructor.cluster()
-            for evt_clusters in chunk_clusters:
-                if sum([1 for rpc_clust in evt_clusters if len(rpc_clust) == 1]) == 6: #1 cluster per rpc
-                    track = RTools.Track([rpc_clust[0] for rpc_clust in evt_clusters])
-                    if track.fit():
-                        for rpc in range(6):
-                            cluster = evt_clusters[rpc][0]
+            chunk_tracks = reconstructor.reconstruct_tracks(chunk)
+            for evt_tracks in chunk_tracks:
+                if evt_tracks:
+                    if evt_tracks[0].chi2 > 8: #how confident
+                        continue
+                    evt_clusters = evt_tracks[0].clusters
+                    for rpc in range(6):
+                        cluster = evt_clusters[rpc]
+                        if len(cluster.hits[0]) > 0 and len(cluster.hits[1]) > 0:
                             phi_time = min([hit.time for hit in cluster.hits[0]])
                             eta_time = min([hit.time for hit in cluster.hits[1]])
                             self.tot_hits[rpc][cluster.channel[0]][cluster.channel[1]] = np.append(self.tot_hits[rpc][cluster.channel[0]][cluster.channel[1]], eta_time - phi_time)
@@ -73,7 +75,7 @@ class Tanalyser():
                             popt, pcov = curve_fit(gaus, bins, hist, p0=[1, 13, 5])
                             self.tot_mean[rpc][phi][eta] = popt[1]
                             self.tot_std[rpc][phi][eta] = popt[2]
-                        except RuntimeError: #if not, just mean and std                            
+                        except RuntimeError: #if fit did not happen, just mean and std                            
                             self.tot_mean[rpc][phi][eta] = np.mean(self.tot_hits[rpc][phi][eta])
                             self.tot_std[rpc][phi][eta] = np.std(self.tot_hits[rpc][phi][eta])
 
@@ -215,3 +217,72 @@ def gaus(x, a, x0, sigma):
 
 def line(x, m, c):
     return m*x + c
+
+
+
+#tof
+#meaningful combinations (otherwise offset)
+#0,1 eta TDC0
+#1,2 bottom phi TDC1
+#2,3 top phi TDC2
+#3,4 none 
+#4,5 eta TDC4
+
+class TOF_analyser():#brute force
+    def __init__(self):
+        #[rpc1,rpc2,is_eta,range of channels]
+        self.meaningful_combos = [[0,1,1, [0,31]],[1,2,0,[0,31]], [2,3,0,[32,63]], [4,5,1,[0,31]]]
+        self.meaningful_times = [[] for combo in self.meaningful_combos]
+    def collect_tof(self, chunks):
+        for chun_number, chunk in enumerate(chunks):
+            reconstructor = RTools.Reconstructor()
+            chunk_tracks = reconstructor.reconstruct_tracks(chunk)
+            for evt_tracks in chunk_tracks:
+                if evt_tracks:
+                    if type(evt_tracks) == RTools.Vertex or evt_tracks[0].chi2 > 8 or evt_tracks[0].angles[0] > 0.1: #how confident
+                        continue
+                    evt_clusters = [None for rpc in range(6)]
+                    for cluster in evt_tracks[0].clusters:
+                        evt_clusters[cluster.rpc] = cluster
+
+                    for index, combo in enumerate(self.meaningful_combos):
+                        rpc1 = combo[0]
+                        rpc2 = combo[1]
+                        is_eta = combo[2]
+                        channels = combo[3]
+                        cluster1 = evt_clusters[rpc1]
+                        cluster2 = evt_clusters[rpc2]
+                        if not cluster1 or not cluster2:
+                            continue
+                        if len(cluster1.hits[is_eta]) > 0 and len(cluster2.hits[is_eta]) > 0:
+                            #print("RPCs", [rpc1, rpc2])
+                            #print("Channels", [cluster1.channel[is_eta], cluster2.channel[is_eta]])
+                            if channels[0] < cluster1.channel[is_eta] < channels[1] and channels[0] < cluster2.channel[is_eta] < channels[1]:
+                                rpc1_time = min([hit.time for hit in cluster1.hits[is_eta]])
+                                rpc2_time = min([hit.time for hit in cluster2.hits[is_eta]])
+                                tof = rpc2_time - rpc1_time
+                                self.meaningful_times[index].append(tof)
+        return self.meaningful_times
+    
+    def plot_tof(self):
+        fig, axes = plt.subplots(2, 2, figsize=(20, 12))
+        for index, combo in enumerate(self.meaningful_combos):
+            ax = axes.flatten()[index]
+            data = self.meaningful_times[index]
+            hist, bins = np.histogram(data, bins=np.arange(0, 20, 0.8), range=(0, 20))
+            bins = bins[:-1]
+            fitX = np.linspace(min(bins), max(bins), 400)
+            yrange = ax.get_ylim()    
+            try: 
+                popt, pcov = curve_fit(gaus, bins, hist, p0=[1, 13, 5])
+                ax.plot(fitX, gaus(fitX, *popt), 'r:', label='Gaussian Fit')
+                ax.text(2, 0.7*yrange[1], f"Fit mean: {round(popt[1], 2)}, $\sigma$: {round(popt[2], 2)}", 
+                    fontsize=14, verticalalignment='top')
+            except:
+                print("No Gaussian fit possible")
+            ax.plot(bins, hist, color="teal", lw=3, label='proANUBIS Data', drawstyle='steps-mid')
+            ax.set_xlabel('TOF (25/32 ns)')
+            ax.set_title(f'RPC {combo[0]} - RPC {combo[1]}')
+            ax.set_xlim([0, 20])
+        plt.show()
+                                            

@@ -3,11 +3,10 @@ import matplotlib
 matplotlib.use('TkAgg')  # or 'Qt5Agg', 'GTK3Agg', etc.
 import mplhep as hep
 hep.style.use([hep.style.ATLAS])
+import os
 import sys
-sys.path.append(".")
-import matplotlib.backends.backend_pdf
-from itertools import product
-import numpy as np
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from Osiris.processing.python import Analysis_tools as ATools
 from scipy.optimize import minimize 
 import math
@@ -47,8 +46,8 @@ class Cluster():
         #x, y, z #var_x, var_y, var_z
         
     def get_time(self):
-        #take time from eta (triggers) #not now
-        time = min([hit.time - hit.channel*tot_speed_factor for hit in self.hits[0]])
+        #take time from eta (triggers)
+        time = min([hit.time - hit.channel*tot_speed_factor for hit in self.hits[1]])
         #time walk
         time -= tof_offsets[self.rpc][0]
         var = tot_std[self.rpc][self.channel[0]][self.channel[1]]**2
@@ -56,7 +55,7 @@ class Cluster():
         return [time, var]
     
     def add_hits(self, phi_hits, eta_hits):
-        channel = [0, 0]
+        channel = [None, None]
         if phi_hits:
             first_phi = min(phi_hits, key = lambda hit: hit.time)
             channel[0] = first_phi.channel
@@ -109,7 +108,7 @@ class Track():
             uncertainties.append([cluster.time[1], *cluster.var])
         return self.tof_correction(np.array(coordinates), np.array(uncertainties))
 
-    def tof_correction(self, coordinates, uncertainties):
+    def tof_correction(self, coordinates, uncertainties): #wrong
         for point in coordinates:
             rpc = RPC_heights.index(point[3])
             point[0] -= tof_offsets[rpc][0]

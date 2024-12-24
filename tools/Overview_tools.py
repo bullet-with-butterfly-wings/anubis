@@ -11,7 +11,7 @@ sys.path.append(dir_path + "tools")
 
 from matplotlib.backends.backend_pdf import PdfPages
 from Osiris.processing.python import Analysis_tools as ATools
-import proAnubis_Analysis_Tools
+#import proAnubis_Analysis_Tools
 import Reconstruction_tools as RTools
 import mplhep as hep
 import Timing_tools as TTools
@@ -105,7 +105,7 @@ def get_chunks(file_name, mode = "chunks", range = (0, 10_000), fReader = None):
                 else:     
                     pbar.update(1)
                     running = processedEvents < max_process_event_chunk
-                    
+
     pbar.close()
     print("Ending time:" , event_time)
     print("Number of chunks:", len(chunks))
